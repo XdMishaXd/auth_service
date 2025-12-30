@@ -1,16 +1,17 @@
 package auth
 
 import (
-	"auth_service/internal/lib/jwt"
-	sl "auth_service/internal/lib/logger"
-	"auth_service/internal/lib/verification"
-	"auth_service/internal/models"
-	"auth_service/internal/storage"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"auth_service/internal/lib/jwt"
+	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/verification"
+	"auth_service/internal/models"
+	"auth_service/internal/storage"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -74,13 +75,14 @@ func (a *Auth) Login(
 	appID int32,
 ) (accessToken string, refreshToken string, err error) {
 	const op = "Auth.Login"
+
 	log := a.log.With(slog.String("op", op))
 
 	user, err := a.usrProvider.User(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found")
-			return "", "", ErrInvalidCredentials
+			return "", "", storage.ErrUserNotFound
 		}
 
 		log.Error("failed to get user", sl.Err(err))

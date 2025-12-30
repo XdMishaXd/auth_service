@@ -1,27 +1,47 @@
-FROM golang:alpine AS builder
+# * Build Stage
+FROM golang:1.23-alpine AS builder
 
 LABEL image_author="Michael Prunchak"
 
-WORKDIR /app
+WORKDIR /build
 
-RUN apk add --no-cache git
+RUN apk add --no-cache \
+	git \
+	ca-certificates \
+	tzdata
+
+ENV GOTOOLCHAIN=auto
 
 COPY go.mod go.sum ./
-RUN go mod download
+
+RUN go mod download && go mod verify
 
 
 COPY . .
 
-RUN go build -o auth_service ./cmd
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	-ldflags='-w -s -extldflags "-static"' \
+	-trimpath \
+	-o auth_service \
+	./cmd
 
-FROM alpine:latest
+# * Runtime Stage
+FROM alpine:3.19
+
+LABEL maintainer="Michael Prunchak"
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates
+RUN apk --no-cache add \
+	ca-certificates \
+	tzdata \
+	&& addgroup -g 1000 appgroup \
+	&& adduser -D -u 1000 -G appgroup appuser
 
-COPY --from=builder /app/auth_service .
-COPY --from=builder /app/config ./config
+COPY --from=builder /build/auth_service .
+COPY --from=builder /build/config ./config
+
+USER appuser
 
 EXPOSE 8082
 

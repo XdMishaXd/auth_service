@@ -1,13 +1,15 @@
 package verify
 
 import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
 	"auth_service/internal/auth"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/lib/verification"
-	"context"
-	"log/slog"
-	"net/http"
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
@@ -17,9 +19,9 @@ type Response struct {
 	resp.Response
 }
 
-func New(ctx context.Context,
+func New(
 	log *slog.Logger,
-	authMiddleware auth.Auth,
+	authMiddleware *auth.Auth,
 	tokenSecret string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +36,7 @@ func New(ctx context.Context,
 		if token == "" {
 			log.Warn("missing verification token")
 
+			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("missing token"))
 
 			return
@@ -43,14 +46,19 @@ func New(ctx context.Context,
 		if err != nil {
 			log.Warn("invalid verification token", sl.Err(err))
 
+			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired token"))
 
 			return
 		}
 
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
 		if err := authMiddleware.VerifyUser(ctx, token, tokenSecret); err != nil {
 			log.Error("failed to mark user as verified", sl.Err(err))
 
+			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
 			return

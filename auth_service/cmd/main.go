@@ -1,6 +1,14 @@
 package main
 
 import (
+	"context"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
 	"auth_service/internal/auth"
 	"auth_service/internal/config"
 	"auth_service/internal/http_server/handlers/login"
@@ -10,16 +18,10 @@ import (
 	"auth_service/internal/http_server/handlers/verify"
 	"auth_service/internal/rabbitmq"
 	"auth_service/internal/storage/postgres"
-	"context"
-	"log/slog"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+	"github.com/go-playground/validator/v10"
 )
 
 const (
@@ -35,16 +37,9 @@ func main() {
 
 	log.Info("starting auth service", slog.String("env", cfg.Env))
 
-	ctx, cancel := context.WithCancel(context.Background())
+	// * Context для инициализации компонентов
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		log.Info("Shutdown signal received")
-		cancel()
-	}()
 
 	storage, err := postgres.New(ctx, cfg)
 	if err != nil {
@@ -53,20 +48,37 @@ func main() {
 	}
 	defer storage.Close()
 
-	msgBroker, err := rabbitmq.New(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName)
+	log.Info("postgresql connected successfully",
+		slog.String("host", cfg.Postgres.Host),
+		slog.Int("port", cfg.Postgres.Port),
+		slog.String("database", cfg.Postgres.DBName),
+	)
+
+	rabbitMQClient, err := rabbitmq.New(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName)
 	if err != nil {
 		log.Error("failed to connect rabbitmq", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
-	defer msgBroker.Close()
+	defer rabbitMQClient.Close()
 
-	authService := auth.New(log, storage, storage, storage, cfg.Tokens.AccessTokenTTL, cfg.Tokens.RefreshTokenTTL)
+	log.Info("rabbitmq connected successfully")
+
+	authMiddleware := auth.New(
+		log,
+		storage,
+		storage,
+		storage,
+		cfg.Tokens.AccessTokenTTL,
+		cfg.Tokens.RefreshTokenTTL,
+	)
+
+	requestValidator := validator.New()
 
 	router := setupRouter(
-		ctx,
 		log,
-		*authService,
-		*msgBroker,
+		requestValidator,
+		authMiddleware,
+		rabbitMQClient,
 		cfg.Tokens.VerificationTokenTTL,
 		cfg.Tokens.VerificationTokenSecret,
 		cfg.HTTPServer.Address,
@@ -80,35 +92,49 @@ func main() {
 		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 	}
 
+	serverErrors := make(chan error, 1)
 	go func() {
-		log.Info("HTTP server is running")
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("Server failed", slog.String("err", err.Error()))
-			cancel()
-		}
+		log.Info("starting http server", slog.String("address", cfg.HTTPServer.Address))
+		serverErrors <- srv.ListenAndServe()
 	}()
 
-	<-ctx.Done()
+	// * graceful shutdown
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Info("Shutting down HTTP server...")
+	select {
+	case err := <-serverErrors:
+		log.Error("server error", slog.String("error", err.Error()))
+		os.Exit(1)
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer shutdownCancel()
+	case sig := <-shutdown:
+		log.Info("shutdown signal received", slog.String("signal", sig.String()))
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Error("Server shutdown error", slog.String("err", err.Error()))
-	} else {
-		log.Info("Server stopped gracefully")
+		cancel()
+
+		// * Graceful shutdown context
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer shutdownCancel()
+
+		log.Info("shutting down http server")
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Error("failed to shutdown server gracefully", slog.String("error", err.Error()))
+
+			if closeErr := srv.Close(); closeErr != nil {
+				log.Error("failed to force close server", slog.String("error", closeErr.Error()))
+			}
+		}
+
+		log.Info("server stopped gracefully")
 	}
-
-	log.Info("Main service stopped")
 }
 
 func setupRouter(
-	ctx context.Context,
 	log *slog.Logger,
-	authService auth.Auth,
-	msgBroker rabbitmq.RabbitMQClient,
+	validate *validator.Validate,
+	authService *auth.Auth,
+	msgBroker *rabbitmq.RabbitMQClient,
 	verificationTokenTTL time.Duration,
 	verificationTokenSecret string,
 	address string,
@@ -119,19 +145,19 @@ func setupRouter(
 	r.Use(middleware.Recoverer)
 
 	r.Post("/register",
-		register.New(ctx, log, authService, &msgBroker, verificationTokenTTL, verificationTokenSecret, address),
+		register.New(log, validate, authService, msgBroker, verificationTokenTTL, verificationTokenSecret, address),
 	)
 	r.Post("/login",
-		login.New(ctx, log, authService),
+		login.New(log, validate, authService),
 	)
 	r.Post("/refresh",
-		refresh.New(ctx, log, authService),
+		refresh.New(log, validate, authService),
 	)
 	r.Post("/logout",
-		logout.New(ctx, log, authService),
+		logout.New(log, validate, authService),
 	)
 	r.Get("/verify",
-		verify.New(ctx, log, authService, verificationTokenSecret),
+		verify.New(log, authService, verificationTokenSecret),
 	)
 
 	return r
