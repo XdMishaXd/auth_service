@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id BIGSERIAL PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   username TEXT NOT NULL UNIQUE,
@@ -31,13 +31,23 @@ FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
 -- REFRESH TOKENS
-CREATE TABLE refresh_tokens (
-  id BIGSERIAL PRIMARY KEY,
-  token_hash TEXT NOT NULL,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  app_id INTEGER NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at TIMESTAMPTZ NOT NULL
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id          BIGSERIAL PRIMARY KEY,
+  token_hash  TEXT NOT NULL,
+  user_id     BIGINT NOT NULL,
+  app_id      INTEGER NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at  TIMESTAMPTZ NOT NULL,
+
+  CONSTRAINT fk_refresh_tokens_user
+    FOREIGN KEY (user_id)
+    REFERENCES users(id)
+    ON DELETE CASCADE,
+
+  CONSTRAINT fk_refresh_tokens_app
+    FOREIGN KEY (app_id)
+    REFERENCES apps(id)
+    ON DELETE CASCADE
 );
 
 CREATE INDEX refresh_tokens_user_idx ON refresh_tokens(user_id);
