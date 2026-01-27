@@ -29,6 +29,41 @@ type Response struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// New godoc
+// @Summary      Аутентификация пользователя
+// @Description  ## Описание
+// @Description  Выполняет аутентификацию пользователя по email и паролю, возвращает пару токенов (access и refresh).
+// @Description
+// @Description  ### Процесс аутентификации:
+// @Description  1. Валидация входных данных (email формат, наличие пароля)
+// @Description  2. Проверка существования пользователя в базе данных
+// @Description  3. Верификация пароля (bcrypt hash comparison)
+// @Description  4. Проверка статуса email (должен быть подтвержден)
+// @Description  5. Валидация app_id (приложение должно существовать)
+// @Description  6. Генерация JWT токенов (access и refresh)
+// @Description
+// @Description  ### Токены:
+// @Description  - **Access Token**: JWT токен для доступа к защищенным ресурсам (TTL: 15 минут)
+// @Description  - **Refresh Token**: JWT токен для обновления access токена (TTL: 30 дней)
+// @Description
+// @Description  ### Коды ошибок:
+// @Description  - `400` - Некорректные данные (невалидный email, отсутствие полей)
+// @Description  - `401` - Неверные credentials (пароль не совпадает)
+// @Description  - `403` - Email не подтвержден
+// @Description  - `404` - Пользователь или приложение не найдены
+// @Description  - `500` - Внутренняя ошибка сервера
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        credentials  body  object{email=string,password=string,app_id=int}  true  "Данные для входа"  example({"email": "user@example.com", "password": "SecurePass123!", "app_id": 1})
+// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "Успешная аутентификация"  example({"status": "ok", "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации"  example({"status": "error", "error": "Invalid email format"})
+// @Failure      401  {object}  object{status=string,error=string}  "Неверные credentials"  example({"status": "error", "error": "Invalid credentials"})
+// @Failure      403  {object}  object{status=string,error=string}  "Email не подтвержден"  example({"status": "error", "error": "Email is not verified"})
+// @Failure      404  {object}  object{status=string,error=string}  "Пользователь не найден"  example({"status": "error", "error": "User not found"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка"  example({"status": "error", "error": "Internal error"})
+// @Router       /auth/login [post]
+// @x-order      1
 func New(
 	log *slog.Logger,
 	validate *validator.Validate,
@@ -74,15 +109,19 @@ func New(
 		if err != nil {
 			switch {
 			case errors.Is(err, storage.ErrUserNotFound):
+				render.Status(r, http.StatusNotFound)
 				render.JSON(w, r, resp.Error("User not found"))
 				return
 			case errors.Is(err, auth.ErrInvalidCredentials):
+				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("Invalid credentials"))
 				return
 			case errors.Is(err, auth.ErrInvalidAppID):
+				render.Status(r, http.StatusBadRequest)
 				render.JSON(w, r, resp.Error("Invalid app id"))
 				return
 			case errors.Is(err, auth.ErrEmailNotVerified):
+				render.Status(r, http.StatusForbidden)
 				render.JSON(w, r, resp.Error("email is not verified"))
 				return
 			}

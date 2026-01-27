@@ -1,5 +1,10 @@
 env: "prod" # local, dev, prod 
 
+swagger:
+  username: "admin"
+  password: "admin"
+  enabled: true
+
 tokens:
   access_token_ttl: 1h
   refresh_token_ttl: 168h
@@ -16,9 +21,9 @@ postgres:
   port: 5432
   user: "user"
   password: "password"
-  dbname: "auth_service"
+  dbname: "monitoring-app"
   sslmode: "disable"
 
 rabbitmq:
   url: "amqp://user:password@rabbitmq:5672/"
-  queue_name: "msgQueue"
+  queue_name: "notificationsQueue"

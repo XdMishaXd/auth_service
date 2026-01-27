@@ -2,6 +2,7 @@ package register
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -27,6 +28,42 @@ type Response struct {
 	UserID int64 `json:"user_id"`
 }
 
+// New godoc
+// @Summary      Регистрация нового пользователя
+// @Description  ## Описание
+// @Description  Создает новую учетную запись пользователя в системе и отправляет письмо с подтверждением email.
+// @Description
+// @Description  ### Процесс регистрации:
+// @Description  1. Валидация входных данных (email формат, наличие username и пароля)
+// @Description  2. Проверка уникальности email и username в базе данных
+// @Description  3. Хеширование пароля с использованием bcrypt (cost factor 12)
+// @Description  4. Создание записи пользователя в БД со статусом `email_verified = false`
+// @Description  5. Генерация JWT токена верификации (валиден 24 часа)
+// @Description  6. Отправка email с ссылкой подтверждения через RabbitMQ
+// @Description
+// @Description  ### Требования к данным:
+// @Description  - **Email**: Валидный email формат (example@domain.com), должен быть уникальным
+// @Description  - **Username**: Минимум 3 символа, только буквы, цифры и подчеркивание, должен быть уникальным
+// @Description  - **Password**: Минимум 8 символов, рекомендуется использовать заглавные буквы, цифры и спецсимволы
+// @Description
+// @Description  ### Email верификация:
+// @Description  - Письмо отправляется асинхронно через RabbitMQ (не блокирует ответ)
+// @Description  - Токен верификации действует 24 часа
+// @Description  - До подтверждения email пользователь не может войти в систему
+// @Description  - Неподтвержденные аккаунты автоматически удаляются через 7 дней
+// @Description
+// @Description  ### Формат ссылки верификации:
+// @Description  `http://domain.com/auth/verify?token=eyJhbGc...`
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        user  body  object{email=string,username=string,password=string}  true  "Данные нового пользователя"  example({"email": "newuser@example.com", "username": "john_doe", "password": "SecurePass123!"})
+// @Success      201  {object}  object{status=string,user_id=int}  "Пользователь успешно создан, письмо отправлено"  example({"status": "ok", "user_id": 42})
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации: некорректный email, слишком короткий пароль или отсутствуют обязательные поля"  example({"status": "error", "error": "Email must be a valid email address"})
+// @Failure      409  {object}  object{status=string,error=string}  "Пользователь с таким email или username уже существует"  example({"status": "error", "error": "User with this email already exists"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом"  example({"status": "error", "error": "Internal error"})
+// @Router       /auth/register [post]
+// @x-order      2
 func New(
 	log *slog.Logger,
 	validate *validator.Validate,
@@ -74,6 +111,15 @@ func New(
 
 		userID, err := authMiddleware.RegisterNewUser(ctx, req.Email, req.Username, req.Pass)
 		if err != nil {
+			if errors.Is(err, auth.ErrUserExists) {
+				log.Error("Failed to register user: user already exists")
+
+				render.Status(r, http.StatusConflict)
+				render.JSON(w, r, resp.Error("User already exists"))
+
+				return
+			}
+
 			log.Error("failed to register user", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
@@ -103,6 +149,7 @@ func New(
 			return
 		}
 
+		render.Status(r, http.StatusCreated)
 		ResponseOK(w, r, userID)
 	}
 }

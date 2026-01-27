@@ -13,6 +13,13 @@ type Config struct {
 	RabbitMQ   `yaml:"rabbitmq"`
 	Postgres   `yaml:"postgres"`
 	HTTPServer `yaml:"http_server"`
+	Swagger    `yaml:"swagger"`
+}
+
+type Swagger struct {
+	Username string `yaml:"username" env-default:"admin"`
+	Password string `yaml:"password" env-default:"admin"`
+	Enabled  bool   `yaml:"enabled" env-default:"false"`
 }
 
 type HTTPServer struct {

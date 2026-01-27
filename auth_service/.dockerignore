@@ -46,7 +46,6 @@ coverage.html
 *.md
 !README.md
 LICENSE
-docs/
 documentation/
 
 # CI/CD

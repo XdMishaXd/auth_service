@@ -1,0 +1,469 @@
+basePath: /
+host: localhost:8082
+info:
+  contact: {}
+  description: Сервис авторизации
+  title: Auth Service API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        ## Описание
+        Выполняет аутентификацию пользователя по email и паролю, возвращает пару токенов (access и refresh).
+
+        ### Процесс аутентификации:
+        1. Валидация входных данных (email формат, наличие пароля)
+        2. Проверка существования пользователя в базе данных
+        3. Верификация пароля (bcrypt hash comparison)
+        4. Проверка статуса email (должен быть подтвержден)
+        5. Валидация app_id (приложение должно существовать)
+        6. Генерация JWT токенов (access и refresh)
+
+        ### Токены:
+        - **Access Token**: JWT токен для доступа к защищенным ресурсам (TTL: 15 минут)
+        - **Refresh Token**: JWT токен для обновления access токена (TTL: 30 дней)
+
+        ### Коды ошибок:
+        - `400` - Некорректные данные (невалидный email, отсутствие полей)
+        - `401` - Неверные credentials (пароль не совпадает)
+        - `403` - Email не подтвержден
+        - `404` - Пользователь или приложение не найдены
+        - `500` - Внутренняя ошибка сервера
+      parameters:
+      - description: Данные для входа
+        in: body
+        name: credentials
+        required: true
+        schema:
+          properties:
+            app_id:
+              type: integer
+            email:
+              type: string
+            password:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Успешная аутентификация"  example({"status": "ok", "access_token":
+            "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          schema:
+            properties:
+              access_token:
+                type: string
+              refresh_token:
+                type: string
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Ошибка валидации"  example({"status": "error", "error": "Invalid
+            email format"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Неверные credentials"  example({"status": "error", "error":
+            "Invalid credentials"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "403":
+          description: 'Email не подтвержден"  example({"status": "error", "error":
+            "Email is not verified"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'Пользователь не найден"  example({"status": "error", "error":
+            "User not found"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка"  example({"status": "error", "error": "Internal
+            error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Аутентификация пользователя
+      tags:
+      - auth
+      x-order: 1
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        ## Описание
+        Завершает активную сессию пользователя, инвалидируя refresh токен.
+
+        ### Процесс выхода:
+        1. Валидация refresh токена из тела запроса
+        2. Проверка существования токена в базе данных
+        3. Добавление токена в blacklist (Redis)
+        4. Удаление токена из таблицы активных сессий
+        5. Инвалидация связанного access токена
+
+        ### Особенности:
+        - После logout refresh токен больше нельзя использовать для получения новых access токенов
+        - Access токен технически остается валидным до истечения TTL (~15 минут)
+        - Для немедленной инвалидации access токена используется blacklist в Redis
+        - Поддержка "logout from all devices" (опционально)
+
+        ### Безопасность:
+        - Токен в blacklist хранится только до истечения его TTL
+        - При попытке использовать инвалидированный токен возвращается 401
+        - Логирование всех операций logout для аудита
+      parameters:
+      - description: Refresh токен для инвалидации
+        in: body
+        name: token
+        required: true
+        schema:
+          properties:
+            refresh_token:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Успешный выход из системы"  example({"status": "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Ошибка валидации: токен не передан или некорректный JSON"  example({"status":
+            "error", "error": "refresh_token is required"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Невалидный или истекший refresh токен"  example({"status":
+            "error", "error": "Invalid credentials"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Выход из системы
+      tags:
+      - auth
+      x-order: 4
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        ## Описание
+        Обменивает действующий refresh токен на новую пару токенов (access и refresh).
+
+        ### Процесс обновления:
+        1. Валидация refresh токена (подпись JWT, срок действия)
+        2. Извлечение user_id и app_id из payload токена
+        3. Проверка что токен не находится в blacklist (Redis)
+        4. Проверка статуса пользователя (не заблокирован, email подтвержден)
+        5. Генерация новой пары токенов:
+        - Новый access токен (TTL: 15 минут)
+        - Новый refresh токен (TTL: 30 дней)
+        6. Инвалидация старого refresh токена (token rotation)
+        7. Сохранение нового refresh токена в БД
+
+        ### Token Rotation (безопасность):
+        - **Каждый refresh токен одноразовый** — после использования старый токен инвалидируется
+        - Это защищает от атак с украденными токенами
+        - При попытке использовать старый токен — все сессии пользователя инвалидируются
+
+        ### Время жизни токенов:
+        - **Access Token**: 15 минут (короткий для безопасности)
+        - **Refresh Token**: 30 дней (удобство для пользователя)
+        - Если пользователь неактивен 30 дней — требуется повторный login
+
+        ### Когда использовать:
+        - Access токен истек (получили 401 на защищенном endpoint)
+        - Превентивное обновление перед истечением access токена
+        - После длительного простоя приложения
+
+        ### Ошибки:
+        - `400`: Невалидный JSON или отсутствует refresh_token
+        - `401`: Токен истек, невалиден или уже использован
+        - `403`: Пользователь заблокирован
+        - `500`: Ошибка БД или генерации токенов
+      parameters:
+      - description: Текущий refresh токен
+        in: body
+        name: token
+        required: true
+        schema:
+          properties:
+            refresh_token:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Новая пара токенов"  example({"status": "ok", "access_token":
+            "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          schema:
+            properties:
+              access_token:
+                type: string
+              refresh_token:
+                type: string
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Ошибка валидации"  example({"status": "error", "error": "refresh_token
+            is required"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Невалидный или истекший токен"  example({"status": "error",
+            "error": "Invalid credentials"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка"  example({"status": "error", "error": "Internal
+            error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Обновление access токена
+      tags:
+      - auth
+      x-order: 3
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        ## Описание
+        Создает новую учетную запись пользователя в системе и отправляет письмо с подтверждением email.
+
+        ### Процесс регистрации:
+        1. Валидация входных данных (email формат, наличие username и пароля)
+        2. Проверка уникальности email и username в базе данных
+        3. Хеширование пароля с использованием bcrypt (cost factor 12)
+        4. Создание записи пользователя в БД со статусом `email_verified = false`
+        5. Генерация JWT токена верификации (валиден 24 часа)
+        6. Отправка email с ссылкой подтверждения через RabbitMQ
+
+        ### Требования к данным:
+        - **Email**: Валидный email формат (example@domain.com), должен быть уникальным
+        - **Username**: Минимум 3 символа, только буквы, цифры и подчеркивание, должен быть уникальным
+        - **Password**: Минимум 8 символов, рекомендуется использовать заглавные буквы, цифры и спецсимволы
+
+        ### Email верификация:
+        - Письмо отправляется асинхронно через RabbitMQ (не блокирует ответ)
+        - Токен верификации действует 24 часа
+        - До подтверждения email пользователь не может войти в систему
+        - Неподтвержденные аккаунты автоматически удаляются через 7 дней
+
+        ### Формат ссылки верификации:
+        `http://domain.com/auth/verify?token=eyJhbGc...`
+      parameters:
+      - description: Данные нового пользователя
+        in: body
+        name: user
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+            password:
+              type: string
+            username:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 'Пользователь успешно создан, письмо отправлено"  example({"status":
+            "ok", "user_id": 42})'
+          schema:
+            properties:
+              status:
+                type: string
+              user_id:
+                type: integer
+            type: object
+        "400":
+          description: 'Ошибка валидации: некорректный email, слишком короткий пароль
+            или отсутствуют обязательные поля"  example({"status": "error", "error":
+            "Email must be a valid email address"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "409":
+          description: 'Пользователь с таким email или username уже существует"  example({"status":
+            "error", "error": "User with this email already exists"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом"  example({"status":
+            "error", "error": "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Регистрация нового пользователя
+      tags:
+      - auth
+      x-order: 2
+  /auth/verify:
+    get:
+      consumes:
+      - application/json
+      description: |-
+        ## Описание
+        Подтверждает email адрес пользователя по токену из письма, активируя учетную запись.
+
+        ### Процесс верификации:
+        1. Извлечение токена из query параметра `token`
+        2. Валидация JWT токена (подпись, срок действия)
+        3. Извлечение user_id из payload токена
+        4. Проверка что пользователь существует и email еще не подтвержден
+        5. Обновление статуса `email_verified = true` в базе данных
+        6. Инвалидация токена (предотвращение повторного использования)
+
+        ### Особенности токена:
+        - **Срок действия**: 24 часа с момента регистрации
+        - **Формат**: JWT (JSON Web Token) подписанный HMAC-SHA256
+        - **Одноразовый**: После успешной верификации токен инвалидируется
+        - **Payload**: Содержит `user_id` и `exp` (время истечения)
+
+        ### После подтверждения:
+        - Пользователь может войти в систему через `/auth/login`
+        - Email помечен как подтвержденный навсегда
+        - Опционально: отправка welcome email
+
+        ### Ошибки:
+        - `400`: Токен отсутствует в URL
+        - `401`: Токен невалидный, истек или уже использован
+        - `500`: Ошибка базы данных
+      parameters:
+      - description: JWT токен верификации из email
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0MiwiZXhwIjoxNzA2MTIzNDU2fQ.signature
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Email успешно подтвержден, можно входить в систему"  example({"status":
+            "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Токен отсутствует в URL"  example({"status": "error", "error":
+            "missing token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Токен невалидный, истек или уже использован"  example({"status":
+            "error", "error": "invalid or expired token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Подтверждение email адреса
+      tags:
+      - auth
+      x-order: 5
+swagger: "2.0"

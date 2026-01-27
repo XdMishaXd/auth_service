@@ -16,13 +16,21 @@ import (
 	"auth_service/internal/http_server/handlers/refresh"
 	register "auth_service/internal/http_server/handlers/register"
 	"auth_service/internal/http_server/handlers/verify"
+	swaggerAuth "auth_service/internal/middleware/swagger-auth"
 	"auth_service/internal/rabbitmq"
 	"auth_service/internal/storage/postgres"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-playground/validator/v10"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
+
+// @title           Auth Service API
+// @version         1.0
+// @description     Сервис авторизации
+// @host            localhost:8082
+// @BasePath        /
 
 const (
 	envLocal = "local"
@@ -76,12 +84,10 @@ func main() {
 
 	router := setupRouter(
 		log,
+		cfg,
 		requestValidator,
 		authMiddleware,
 		rabbitMQClient,
-		cfg.Tokens.VerificationTokenTTL,
-		cfg.Tokens.VerificationTokenSecret,
-		cfg.HTTPServer.Address,
 	)
 
 	srv := &http.Server{
@@ -132,33 +138,48 @@ func main() {
 
 func setupRouter(
 	log *slog.Logger,
+	cfg *config.Config,
 	validate *validator.Validate,
 	authService *auth.Auth,
 	msgBroker *rabbitmq.RabbitMQClient,
-	verificationTokenTTL time.Duration,
-	verificationTokenSecret string,
-	address string,
 ) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	r.Post("/register",
-		register.New(log, validate, authService, msgBroker, verificationTokenTTL, verificationTokenSecret, address),
-	)
-	r.Post("/login",
-		login.New(log, validate, authService),
-	)
-	r.Post("/refresh",
-		refresh.New(log, validate, authService),
-	)
-	r.Post("/logout",
-		logout.New(log, validate, authService),
-	)
-	r.Get("/verify",
-		verify.New(log, authService, verificationTokenSecret),
-	)
+	if cfg.Swagger.Enabled {
+		r.Group(func(r chi.Router) {
+			r.Use(swaggerAuth.New(cfg.Swagger.Username, cfg.Swagger.Password))
+			r.Get("/swagger/*", httpSwagger.WrapHandler)
+		})
+	}
+
+	r.Route("/auth", func(r chi.Router) {
+		r.Post("/register",
+			register.New(
+				log,
+				validate,
+				authService,
+				msgBroker,
+				cfg.Tokens.VerificationTokenTTL,
+				cfg.Tokens.VerificationTokenSecret,
+				cfg.HTTPServer.Address,
+			),
+		)
+		r.Post("/login",
+			login.New(log, validate, authService),
+		)
+		r.Post("/refresh",
+			refresh.New(log, validate, authService),
+		)
+		r.Post("/logout",
+			logout.New(log, validate, authService),
+		)
+		r.Get("/verify",
+			verify.New(log, authService, cfg.Tokens.VerificationTokenSecret),
+		)
+	})
 
 	return r
 }

@@ -14,6 +14,8 @@ import (
 	"auth_service/internal/storage"
 
 	"golang.org/x/crypto/bcrypt"
+
+	_ "auth_service/docs"
 )
 
 var (
@@ -156,7 +158,7 @@ func (a *Auth) RegisterNewUser(
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Warn("User already exists")
 
-			return 0, fmt.Errorf("%s: %w", op, ErrUserExists)
+			return 0, ErrUserExists
 		}
 
 		log.Error("Failed to save user", sl.Err(err))
@@ -275,12 +277,14 @@ func (a *Auth) Logout(
 	rt, err := a.usrProvider.GetRefreshToken(ctx, rawRefreshToken)
 	if err != nil {
 		log.Warn("refresh token not found", slog.Any("err", err))
+
 		return ErrInvalidCredentials
 	}
 
 	err = a.usrSaver.DeleteRefreshToken(ctx, rt.TokenHash)
 	if err != nil {
 		log.Error("failed to delete refresh token", slog.Any("err", err))
+
 		return err
 	}
 
