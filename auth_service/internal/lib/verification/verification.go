@@ -1,11 +1,12 @@
 package verification
 
 import (
-	"auth_service/internal/models"
 	"context"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"auth_service/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -30,7 +31,7 @@ func VerifyUserEmail(
 		return err
 	}
 
-	verifyLink := fmt.Sprintf("%s/verify?token=%s", url, token)
+	verifyLink := fmt.Sprintf("%s/auth/verify?token=%s", url, token)
 
 	msg := models.Message{
 		Email: email,

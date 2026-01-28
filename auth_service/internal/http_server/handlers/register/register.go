@@ -11,6 +11,7 @@ import (
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/lib/verification"
+	"auth_service/internal/storage"
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
@@ -111,7 +112,7 @@ func New(
 
 		userID, err := authMiddleware.RegisterNewUser(ctx, req.Email, req.Username, req.Pass)
 		if err != nil {
-			if errors.Is(err, auth.ErrUserExists) {
+			if errors.Is(err, storage.ErrUserAlreadyExists) {
 				log.Error("Failed to register user: user already exists")
 
 				render.Status(r, http.StatusConflict)

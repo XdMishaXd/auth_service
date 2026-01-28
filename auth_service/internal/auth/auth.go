@@ -21,7 +21,6 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidAppID       = errors.New("invalid app id")
-	ErrUserExists         = errors.New("user already exists")
 	ErrEmailNotVerified   = errors.New("email not verified")
 )
 
@@ -155,10 +154,10 @@ func (a *Auth) RegisterNewUser(
 
 	id, err := a.usrSaver.SaveUser(ctx, email, username, passHash)
 	if err != nil {
-		if errors.Is(err, storage.ErrUserExists) {
+		if errors.Is(err, storage.ErrUserAlreadyExists) {
 			log.Warn("User already exists")
 
-			return 0, ErrUserExists
+			return 0, storage.ErrUserAlreadyExists
 		}
 
 		log.Error("Failed to save user", sl.Err(err))

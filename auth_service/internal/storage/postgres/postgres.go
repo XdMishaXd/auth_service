@@ -10,8 +10,8 @@ import (
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
-	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -61,8 +61,9 @@ func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, pas
 
 	err := r.pool.QueryRow(ctx, query, email, username, string(passHash)).Scan(&id)
 	if err != nil {
-		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "23505" {
-			return 0, storage.ErrUserExists
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return 0, storage.ErrUserAlreadyExists
 		}
 
 		return 0, fmt.Errorf("%s: failed to save user: %w", op, err)
