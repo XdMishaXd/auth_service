@@ -124,6 +124,33 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (models.User, err
 	return u, err
 }
 
+// * CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
+func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error) {
+	query := `	
+		SELECT id, is_verified
+		FROM users
+		WHERE email = $1;
+	`
+	row := r.pool.QueryRow(ctx, query, email)
+
+	var isVerified bool
+	var id int64
+
+	err := row.Scan(
+		&id,
+		&isVerified,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, storage.ErrUserNotFound
+		}
+
+		return 0, false, err
+	}
+
+	return id, isVerified, nil
+}
+
 func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error {
 	query := `UPDATE users SET is_verified = TRUE WHERE id = $1`
 

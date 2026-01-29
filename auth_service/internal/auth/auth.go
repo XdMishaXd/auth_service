@@ -46,6 +46,7 @@ type UserProvider interface {
 	UserByID(ctx context.Context, id int64) (models.User, error)
 	GetRefreshToken(ctx context.Context, rawToken string) (models.RefreshToken, error)
 	SetEmailVerified(ctx context.Context, uid int64) error
+	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
 }
 
 type AppProvider interface {
@@ -166,6 +167,30 @@ func (a *Auth) RegisterNewUser(
 	}
 
 	return id, nil
+}
+
+func (a *Auth) CheckUserVerification(
+	ctx context.Context,
+	email string,
+) (int64, bool, error) {
+	const op = "auth.CheckUserVerification"
+
+	log := a.log.With(
+		slog.String("op", op),
+	)
+
+	userID, isVerified, err := a.usrProvider.CheckIfUserVerified(ctx, email)
+	if err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			return 0, false, storage.ErrUserNotFound
+		}
+
+		log.Info("failed to check user", sl.Err(err))
+
+		return 0, false, err
+	}
+
+	return userID, isVerified, nil
 }
 
 func (a *Auth) Refresh(

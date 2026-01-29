@@ -15,7 +15,9 @@ import (
 	"auth_service/internal/http_server/handlers/logout"
 	"auth_service/internal/http_server/handlers/refresh"
 	register "auth_service/internal/http_server/handlers/register"
+	resendEmail "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
+	rateLimit "auth_service/internal/middleware/ratelimit"
 	swaggerAuth "auth_service/internal/middleware/swagger-auth"
 	"auth_service/internal/rabbitmq"
 	"auth_service/internal/storage/postgres"
@@ -156,7 +158,7 @@ func setupRouter(
 	}
 
 	r.Route("/auth", func(r chi.Router) {
-		r.Post("/register",
+		r.With(rateLimit.Register()).Post("/register",
 			register.New(
 				log,
 				validate,
@@ -167,17 +169,28 @@ func setupRouter(
 				cfg.HTTPServer.Address,
 			),
 		)
-		r.Post("/login",
+		r.With(rateLimit.Login()).Post("/login",
 			login.New(log, validate, authService),
 		)
-		r.Post("/refresh",
+		r.With(rateLimit.Refresh()).Post("/refresh",
 			refresh.New(log, validate, authService),
 		)
-		r.Post("/logout",
+		r.With(rateLimit.Logout()).Post("/logout",
 			logout.New(log, validate, authService),
 		)
-		r.Get("/verify",
+		r.With(rateLimit.Verify()).Get("/verify",
 			verify.New(log, authService, cfg.Tokens.VerificationTokenSecret),
+		)
+		r.With(rateLimit.ResendVerificationEmail()).Post("/verify/resend",
+			resendEmail.New(
+				log,
+				validate,
+				authService,
+				msgBroker,
+				cfg.Tokens.VerificationTokenTTL,
+				cfg.Tokens.VerificationTokenSecret,
+				cfg.HTTPServer.Address,
+			),
 		)
 	})
 

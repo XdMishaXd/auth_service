@@ -492,6 +492,93 @@
                 },
                 "x-order": 5
             }
+        },
+        "/auth/verify/resend": {
+            "post": {
+                "description": "## Описание\nПовторно отправляет письмо с подтверждением email адреса пользователю.\n\n### Процесс отправки:\n1. Валидация email формата\n2. Проверка существования пользователя с указанным email\n3. Проверка статуса верификации email\n4. Если email не подтвержден - генерация нового токена верификации\n5. Отправка письма через RabbitMQ\n6. Возврат успешного ответа (независимо от статуса верификации)\n\n### Когда использовать:\n- Пользователь не получил первое письмо\n- Токен верификации истек (24 часа)\n- Письмо попало в спам\n- Пользователь случайно удалил письмо\n\n### Безопасность (важно!):\n- Endpoint всегда возвращает 200 OK, даже если email уже подтвержден\n- Это предотвращает enumeration атаки (определение существующих email)\n- Не раскрывает информацию о существовании пользователя\n- Rate limiting должен быть настроен (максимум 3 запроса в час на email)\n\n### Особенности:\n- Если email уже подтвержден - письмо не отправляется (но ответ 200 OK)\n- Новый токен инвалидирует предыдущий\n- Токен действителен 24 часа\n- Отправка асинхронная через RabbitMQ (не блокирует ответ)\n",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Повторная отправка письма верификации",
+                "parameters": [
+                    {
+                        "description": "Email пользователя",
+                        "name": "email",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "email": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Письмо отправлено (или email уже подтвержден)\"  example({\"status\": \"ok\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Ошибка валидации: некорректный email формат\"  example({\"status\": \"error\", \"error\": \"Email must be a valid email address\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Пользователь не найден\"  example({\"status\": \"error\", \"error\": \"User not found\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                },
+                "x-order": 6
+            }
         }
     }
 }

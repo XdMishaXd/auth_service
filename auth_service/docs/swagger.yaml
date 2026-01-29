@@ -466,4 +466,92 @@ paths:
       tags:
       - auth
       x-order: 5
+  /auth/verify/resend:
+    post:
+      consumes:
+      - application/json
+      description: |
+        ## Описание
+        Повторно отправляет письмо с подтверждением email адреса пользователю.
+
+        ### Процесс отправки:
+        1. Валидация email формата
+        2. Проверка существования пользователя с указанным email
+        3. Проверка статуса верификации email
+        4. Если email не подтвержден - генерация нового токена верификации
+        5. Отправка письма через RabbitMQ
+        6. Возврат успешного ответа (независимо от статуса верификации)
+
+        ### Когда использовать:
+        - Пользователь не получил первое письмо
+        - Токен верификации истек (24 часа)
+        - Письмо попало в спам
+        - Пользователь случайно удалил письмо
+
+        ### Безопасность (важно!):
+        - Endpoint всегда возвращает 200 OK, даже если email уже подтвержден
+        - Это предотвращает enumeration атаки (определение существующих email)
+        - Не раскрывает информацию о существовании пользователя
+        - Rate limiting должен быть настроен (максимум 3 запроса в час на email)
+
+        ### Особенности:
+        - Если email уже подтвержден - письмо не отправляется (но ответ 200 OK)
+        - Новый токен инвалидирует предыдущий
+        - Токен действителен 24 часа
+        - Отправка асинхронная через RabbitMQ (не блокирует ответ)
+      parameters:
+      - description: Email пользователя
+        in: body
+        name: email
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Письмо отправлено (или email уже подтвержден)"  example({"status":
+            "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Ошибка валидации: некорректный email формат"  example({"status":
+            "error", "error": "Email must be a valid email address"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'Пользователь не найден"  example({"status": "error", "error":
+            "User not found"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Повторная отправка письма верификации
+      tags:
+      - auth
+      x-order: 6
 swagger: "2.0"

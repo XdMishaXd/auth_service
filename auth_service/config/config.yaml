@@ -21,7 +21,7 @@ postgres:
   port: 5432
   user: "user"
   password: "password"
-  dbname: "monitoring-app"
+  dbname: "auth_service"
   sslmode: "disable"
 
 rabbitmq:
