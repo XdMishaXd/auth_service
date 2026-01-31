@@ -72,7 +72,7 @@ func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, pas
 	return id, nil
 }
 
-func (r *PostgresRepo) User(ctx context.Context, email string) (models.User, error) {
+func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, error) {
 	query := `
 		SELECT id, email, username, password_hash, is_verified
 		FROM users
@@ -91,16 +91,16 @@ func (r *PostgresRepo) User(ctx context.Context, email string) (models.User, err
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return models.User{}, storage.ErrUserNotFound
+			return &models.User{}, storage.ErrUserNotFound
 		}
 
-		return models.User{}, err
+		return &models.User{}, err
 	}
 
-	return u, err
+	return &u, err
 }
 
-func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (models.User, error) {
+func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, error) {
 	query := `
 		SELECT id, email, username, password_hash, is_verified
 		FROM users
@@ -118,10 +118,10 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (models.User, err
 		&u.IsVerified,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return models.User{}, storage.ErrUserNotFound
+		return &models.User{}, storage.ErrUserNotFound
 	}
 
-	return u, err
+	return &u, err
 }
 
 // * CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
@@ -192,7 +192,7 @@ func (r *PostgresRepo) UpdateRefreshToken(
 	return err
 }
 
-func (r *PostgresRepo) GetRefreshToken(ctx context.Context, rawToken string) (models.RefreshToken, error) {
+func (r *PostgresRepo) RefreshToken(ctx context.Context, rawToken string) (*models.RefreshToken, error) {
 	const query = `
 		SELECT user_id, app_id, token_hash, expires_at
 		FROM refresh_tokens
@@ -201,7 +201,7 @@ func (r *PostgresRepo) GetRefreshToken(ctx context.Context, rawToken string) (mo
 
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
-		return models.RefreshToken{}, err
+		return &models.RefreshToken{}, err
 	}
 	defer rows.Close()
 
@@ -217,7 +217,7 @@ func (r *PostgresRepo) GetRefreshToken(ctx context.Context, rawToken string) (mo
 
 		err := rows.Scan(&userID, &appID, &tokenHash, &expiresAt)
 		if err != nil {
-			return models.RefreshToken{}, err
+			return &models.RefreshToken{}, err
 		}
 
 		if bcrypt.CompareHashAndPassword(tokenHash, []byte(rawToken)) == nil {
@@ -225,14 +225,14 @@ func (r *PostgresRepo) GetRefreshToken(ctx context.Context, rawToken string) (mo
 			rt.AppID = appID
 			rt.TokenHash = tokenHash
 			rt.ExpiresAt = expiresAt
-			return rt, nil
+			return &rt, nil
 		}
 	}
 	if rows.Err() != nil {
-		return models.RefreshToken{}, rows.Err()
+		return &models.RefreshToken{}, rows.Err()
 	}
 
-	return models.RefreshToken{}, storage.ErrRefreshTokenNotFound
+	return &models.RefreshToken{}, storage.ErrRefreshTokenNotFound
 }
 
 func (r *PostgresRepo) DeleteRefreshToken(ctx context.Context, tokenHash []byte) error {
@@ -243,7 +243,7 @@ func (r *PostgresRepo) DeleteRefreshToken(ctx context.Context, tokenHash []byte)
 	return err
 }
 
-func (r *PostgresRepo) App(ctx context.Context, appID int32) (models.App, error) {
+func (r *PostgresRepo) App(ctx context.Context, appID int32) (*models.App, error) {
 	query := `
 		SELECT id, name, secret
 		FROM apps
@@ -254,10 +254,190 @@ func (r *PostgresRepo) App(ctx context.Context, appID int32) (models.App, error)
 
 	err := r.pool.QueryRow(ctx, query, appID).Scan(&a.ID, &a.Name, &a.Secret)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return models.App{}, storage.ErrAppNotFound
+		return &models.App{}, storage.ErrAppNotFound
 	}
 
-	return a, err
+	return &a, err
+}
+
+// * SaveMagicLink сохраняет magic link
+func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink) error {
+	const op = "storage.postgres.SaveMagicLink"
+
+	query := `
+		INSERT INTO magic_links (
+			user_id, 
+			app_id, 
+			token_hash, 
+			session_id, 
+			ip_address, 
+			user_agent, 
+			expires_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id, created_at
+	`
+
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		link.UserID,
+		link.AppID,
+		link.TokenHash,
+		link.SessionID,
+		link.IPAddress,
+		link.UserAgent,
+		link.ExpiresAt,
+	).Scan(&link.ID, &link.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+// * MagicLinkByTokenHash получает magic link по хешу токена
+func (r *PostgresRepo) MagicLinkByTokenHash(ctx context.Context, tokenHash string) (*models.MagicLink, error) {
+	const op = "storage.postgres.MagicLinkByTokenHash"
+
+	query := `
+		SELECT 
+			id, 
+			user_id, 
+			app_id, 
+			token_hash, 
+			session_id, 
+			ip_address, 
+			user_agent, 
+			used, 
+			used_at, 
+			expires_at, 
+			created_at
+		FROM magic_links
+		WHERE token_hash = $1
+	`
+
+	link := &models.MagicLink{}
+
+	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
+		&link.ID,
+		&link.UserID,
+		&link.AppID,
+		&link.TokenHash,
+		&link.SessionID,
+		&link.IPAddress,
+		&link.UserAgent,
+		&link.Used,
+		&link.UsedAt,
+		&link.ExpiresAt,
+		&link.CreatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%s: magic link not found", op)
+		}
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return link, nil
+}
+
+// MarkMagicLinkAsUsed помечает magic link как использованный
+func (r *PostgresRepo) MarkMagicLinkAsUsed(ctx context.Context, id int64) error {
+	const op = "storage.postgres.MarkMagicLinkAsUsed"
+
+	query := `
+		UPDATE magic_links 
+		SET used = true, 
+			used_at = NOW() 
+		WHERE id = $1 AND used = false
+	`
+
+	result, err := r.pool.Exec(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	rows := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("%s: magic link not found or already used", op)
+	}
+
+	return nil
+}
+
+// * ActiveMagicLinksByUserID получает активные magic links пользователя
+func (r *PostgresRepo) ActiveMagicLinksByUserID(ctx context.Context, userID int64) ([]*models.MagicLink, error) {
+	const op = "storage.postgres.ActiveMagicLinksByUserID"
+
+	query := `
+		SELECT 
+			id, 
+			user_id, 
+			app_id, 
+			token_hash, 
+			session_id, 
+			ip_address, 
+			user_agent, 
+			used, 
+			used_at, 
+			expires_at, 
+			created_at
+		FROM magic_links
+		WHERE user_id = $1 AND used = false AND expires_at > NOW()
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	links, err := pgx.CollectRows(rows, pgx.RowToStructByName[*models.MagicLink])
+	if err != nil {
+		return nil, fmt.Errorf("%s: collect: %w", op, err)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return links, nil
+}
+
+// * InvalidateMagicLinksByUserID инвалидирует все активные magic links пользователя
+func (r *PostgresRepo) InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error) {
+	const op = "storage.postgres.InvalidateMagicLinksByUserID"
+
+	query := `
+		UPDATE magic_links 
+		SET used = true, 
+			used_at = NOW() 
+		WHERE user_id = $1 AND used = false AND expires_at > NOW()
+	`
+
+	result, err := r.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	rows := result.RowsAffected()
+	return rows, nil
+}
+
+// * CleanupExpiredMagicLinks вызывает функцию БД для очистки истекших ссылок
+func (r *PostgresRepo) CleanupExpiredMagicLinks(ctx context.Context) (int, error) {
+	const op = "storage.postgres.CleanupExpiredMagicLinks"
+
+	query := `SELECT cleanup_expired_magic_links()`
+
+	var deleted int
+	err := r.pool.QueryRow(ctx, query).Scan(&deleted)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return deleted, nil
 }
 
 func (r *PostgresRepo) Close() {

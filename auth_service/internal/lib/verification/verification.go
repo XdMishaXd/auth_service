@@ -34,8 +34,9 @@ func VerifyUserEmail(
 	verifyLink := fmt.Sprintf("%s/auth/verify?token=%s", url, token)
 
 	msg := models.Message{
-		Email: email,
-		Link:  verifyLink,
+		Email:   email,
+		Link:    verifyLink,
+		Purpose: "Email_verification",
 	}
 
 	if err := pub.SendMessage(ctx, msg); err != nil {

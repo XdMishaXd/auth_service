@@ -42,15 +42,15 @@ type UserSaver interface {
 }
 
 type UserProvider interface {
-	User(ctx context.Context, email string) (models.User, error)
-	UserByID(ctx context.Context, id int64) (models.User, error)
-	GetRefreshToken(ctx context.Context, rawToken string) (models.RefreshToken, error)
+	User(ctx context.Context, email string) (*models.User, error)
+	UserByID(ctx context.Context, id int64) (*models.User, error)
+	RefreshToken(ctx context.Context, rawToken string) (*models.RefreshToken, error)
 	SetEmailVerified(ctx context.Context, uid int64) error
 	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
 }
 
 type AppProvider interface {
-	App(ctx context.Context, appID int32) (models.App, error)
+	App(ctx context.Context, appID int32) (*models.App, error)
 }
 
 func New(
@@ -105,7 +105,7 @@ func (a *Auth) Login(
 		return "", "", ErrInvalidAppID
 	}
 
-	accessToken, err = jwt.NewToken(user, app, a.tokenTTL)
+	accessToken, err = jwt.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		log.Error("failed to generate access token", sl.Err(err))
 		return "", "", err
@@ -203,7 +203,7 @@ func (a *Auth) Refresh(
 		slog.String("op", op),
 	)
 
-	rt, err := a.usrProvider.GetRefreshToken(ctx, refreshToken)
+	rt, err := a.usrProvider.RefreshToken(ctx, refreshToken)
 	if err != nil {
 		log.Warn("refresh token not found", sl.Err(err))
 		return "", "", ErrInvalidCredentials
@@ -226,7 +226,7 @@ func (a *Auth) Refresh(
 		return "", "", ErrInvalidAppID
 	}
 
-	accessToken, err := jwt.NewToken(user, app, a.tokenTTL)
+	accessToken, err := jwt.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		log.Error("failed to generate access token", sl.Err(err))
 		return "", "", err
@@ -298,7 +298,7 @@ func (a *Auth) Logout(
 		slog.String("op", op),
 	)
 
-	rt, err := a.usrProvider.GetRefreshToken(ctx, rawRefreshToken)
+	rt, err := a.usrProvider.RefreshToken(ctx, rawRefreshToken)
 	if err != nil {
 		log.Warn("refresh token not found", slog.Any("err", err))
 
