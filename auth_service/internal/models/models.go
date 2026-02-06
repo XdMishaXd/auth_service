@@ -29,10 +29,24 @@ type Message struct {
 	Purpose string `json:"purpose"`
 }
 
+type SendMagicLinkRequest struct {
+	UserID    int64  `json:"user_id"`
+	AppID     int32  `json:"app_id"`
+	Email     string `json:"email"`
+	IPAddress string `json:"ip_address"`
+	UserAgent string `json:"user_agent"`
+}
+
+type MagicLinkVerificatonResult struct {
+	UserID    int64  `json:"user_id"`
+	AppID     int32  `json:"app_id"`
+	SessionID string `json:"session_id"`
+}
+
 type MagicLink struct {
 	ID        int64      `json:"id"`
 	UserID    int64      `json:"user_id"`
-	AppID     int        `json:"app_id"`
+	AppID     int32      `json:"app_id"`
 	TokenHash string     `json:"token_hash"`
 	SessionID string     `json:"session_id"`
 	IPAddress string     `json:"ip_address"`

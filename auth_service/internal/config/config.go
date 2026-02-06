@@ -8,12 +8,14 @@ import (
 )
 
 type Config struct {
-	Env        string `yaml:"env" env-default:"local"`
-	Tokens     `yaml:"tokens"`
-	RabbitMQ   `yaml:"rabbitmq"`
-	Postgres   `yaml:"postgres"`
-	HTTPServer `yaml:"http_server"`
-	Swagger    `yaml:"swagger"`
+	Env           string `yaml:"env" env-default:"local"`
+	Tokens        `yaml:"tokens"`
+	RabbitMQ      `yaml:"rabbitmq"`
+	Postgres      `yaml:"postgres"`
+	Redis         `yaml:"redis"`
+	HTTPServer    `yaml:"http_server"`
+	TwoFactorAuth `yaml:"two_factor_auth"`
+	Swagger       `yaml:"swagger"`
 }
 
 type Swagger struct {
@@ -28,6 +30,12 @@ type HTTPServer struct {
 	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
 }
 
+type TwoFactorAuth struct {
+	TokenTTL    time.Duration `yaml:"token_ttl" env-default:"10m"`
+	TokenSecret string        `yaml:"token_secret" env-required:"true"`
+	RedirectURL string        `yaml:"redirect_url" env-default:"http://localhost:8082"`
+}
+
 type Postgres struct {
 	Host     string `yaml:"host" env-default:"postgres"`
 	Port     int    `yaml:"port" env-default:"5432"`
@@ -35,6 +43,12 @@ type Postgres struct {
 	Password string `yaml:"password" env-required:"true"`
 	DBName   string `yaml:"dbname" env-required:"true"`
 	SSLMode  string `yaml:"sslmode" env-default:"disabled"`
+}
+
+type Redis struct {
+	Addr     string `yaml:"addr" env-default:"redis:6379"`
+	Password string `yaml:"password" env-required:"true"`
+	Db       int    `yaml:"db" env-default:"1"`
 }
 
 type Tokens struct {

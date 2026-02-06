@@ -36,7 +36,7 @@ func VerifyUserEmail(
 	msg := models.Message{
 		Email:   email,
 		Link:    verifyLink,
-		Purpose: "Email_verification",
+		Purpose: "email_verification",
 	}
 
 	if err := pub.SendMessage(ctx, msg); err != nil {

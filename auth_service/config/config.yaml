@@ -11,6 +11,11 @@ tokens:
   verification_token_ttl: 15m
   verification_token_secret: "123o;rnfdjh1^%I@!$N&RJHDF*&T!#@$HADF&T"
 
+two_factor_auth:
+  token_ttl: 10m
+  token_secret: "123"
+  redirect_url: "http://localhost:8082"
+
 http_server:
   address: ":8082"
   timeout: 4s
@@ -23,6 +28,11 @@ postgres:
   password: "password"
   dbname: "auth_service"
   sslmode: "disable"
+
+redis:
+  addr: "redis:6379"
+  password: "1234"
+  db: 1
 
 rabbitmq:
   url: "amqp://user:password@rabbitmq:5672/"
