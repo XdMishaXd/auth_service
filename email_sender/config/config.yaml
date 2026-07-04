@@ -1,4 +1,4 @@
-env: "prod" # local, dev, prod 
+env: "prod" # local, dev, prod
 
 rabbitmq:
   url: "amqp://user:password@rabbitmq:5672/"

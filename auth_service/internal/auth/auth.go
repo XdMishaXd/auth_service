@@ -1,10 +1,13 @@
 package auth
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"auth_service/internal/lib/jwt"
@@ -13,6 +16,7 @@ import (
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	_ "auth_service/docs"
@@ -36,15 +40,15 @@ type Auth struct {
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (uid int64, err error)
 
-	SaveRefreshToken(ctx context.Context, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
-	UpdateRefreshToken(ctx context.Context, userID int64, oldTokenHash, newTokenHash []byte, expiresAt time.Time) error
-	DeleteRefreshToken(ctx context.Context, tokenHash []byte) error
+	SaveRefreshToken(ctx context.Context, id string, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
+	UpdateRefreshToken(ctx context.Context, id uuid.UUID, newTokenHash []byte, oldTokenHash []byte, expiresAt time.Time) error
+	DeleteRefreshToken(ctx context.Context, id uuid.UUID) error
 }
 
 type UserProvider interface {
 	User(ctx context.Context, email string) (*models.User, error)
 	UserByID(ctx context.Context, id int64) (*models.User, error)
-	RefreshToken(ctx context.Context, rawToken string) (*models.RefreshToken, error)
+	RefreshTokenByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
 	SetEmailVerified(ctx context.Context, uid int64) error
 	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
 }
@@ -111,26 +115,27 @@ func (a *Auth) Login(
 		return "", "", err
 	}
 
-	refreshTokenValue, err := jwt.NewRefreshToken()
+	tokenID, refreshToken, hash, err := jwt.NewRefreshToken("")
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", err
 	}
 
-	refreshHash, err := bcrypt.GenerateFromPassword([]byte(refreshTokenValue), bcrypt.DefaultCost)
-	if err != nil {
-		log.Error("failed to hash refresh token", sl.Err(err))
-		return "", "", err
-	}
-
-	err = a.usrSaver.SaveRefreshToken(ctx, user.ID, appID, refreshHash, time.Now().Add(a.refreshTTL))
+	err = a.usrSaver.SaveRefreshToken(
+		ctx,
+		tokenID,
+		user.ID,
+		appID,
+		hash,
+		time.Now().Add(a.refreshTTL),
+	)
 	if err != nil {
 		log.Error("failed to save refresh token", sl.Err(err))
 		return "", "", err
 	}
 
 	log.Info("user logged in successfully", slog.Int64("uid", user.ID))
-	return accessToken, refreshTokenValue, nil
+	return accessToken, refreshToken, nil
 }
 
 func (a *Auth) RegisterNewUser(
@@ -203,7 +208,16 @@ func (a *Auth) Refresh(
 		slog.String("op", op),
 	)
 
-	rt, err := a.usrProvider.RefreshToken(ctx, refreshToken)
+	parts := strings.Split(refreshToken, ".")
+	if len(parts) != 2 {
+		log.Warn("invalid refresh token format")
+		return "", "", ErrInvalidCredentials
+	}
+
+	tokenID := parts[0]
+	secret := parts[1]
+
+	rt, err := a.usrProvider.RefreshTokenByID(ctx, uuid.MustParse(tokenID))
 	if err != nil {
 		log.Warn("refresh token not found", sl.Err(err))
 		return "", "", ErrInvalidCredentials
@@ -211,7 +225,12 @@ func (a *Auth) Refresh(
 
 	if time.Now().After(rt.ExpiresAt) {
 		log.Warn("refresh token expired")
+		return "", "", ErrInvalidCredentials
+	}
 
+	sum := sha256.Sum256([]byte(secret))
+	if !bytes.Equal(rt.TokenHash, sum[:]) {
+		log.Warn("invalid refresh token")
 		return "", "", ErrInvalidCredentials
 	}
 
@@ -232,23 +251,17 @@ func (a *Auth) Refresh(
 		return "", "", err
 	}
 
-	newRefresh, err := jwt.NewRefreshToken()
+	_, newRefreshToken, newHash, err := jwt.NewRefreshToken(tokenID)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", err
 	}
 
-	newHash, err := bcrypt.GenerateFromPassword([]byte(newRefresh), bcrypt.DefaultCost)
-	if err != nil {
-		log.Error("failed to hash new refresh token", sl.Err(err))
-		return "", "", err
-	}
-
 	err = a.usrSaver.UpdateRefreshToken(
 		ctx,
-		rt.UserID,
-		rt.TokenHash,
+		rt.ID,
 		newHash,
+		rt.TokenHash,
 		time.Now().Add(a.refreshTTL),
 	)
 	if err != nil {
@@ -258,7 +271,7 @@ func (a *Auth) Refresh(
 
 	log.Info("refresh successful", slog.Int64("uid", user.ID))
 
-	return accessToken, newRefresh, nil
+	return accessToken, newRefreshToken, nil
 }
 
 func (a *Auth) VerifyUser(
@@ -298,21 +311,34 @@ func (a *Auth) Logout(
 		slog.String("op", op),
 	)
 
-	rt, err := a.usrProvider.RefreshToken(ctx, rawRefreshToken)
-	if err != nil {
-		log.Warn("refresh token not found", slog.Any("err", err))
-
+	parts := strings.Split(rawRefreshToken, ".")
+	if len(parts) != 2 {
+		log.Warn("invalid refresh token format")
 		return ErrInvalidCredentials
 	}
 
-	err = a.usrSaver.DeleteRefreshToken(ctx, rt.TokenHash)
+	tokenID := parts[0]
+	secret := parts[1]
+
+	rt, err := a.usrProvider.RefreshTokenByID(ctx, uuid.MustParse(tokenID))
+	if err != nil {
+		log.Warn("refresh token not found", slog.Any("err", err))
+		return ErrInvalidCredentials
+	}
+
+	sum := sha256.Sum256([]byte(secret))
+	if !bytes.Equal(rt.TokenHash, sum[:]) {
+		log.Warn("invalid refresh token")
+		return ErrInvalidCredentials
+	}
+
+	// 4. delete by ID (ВАЖНО)
+	err = a.usrSaver.DeleteRefreshToken(ctx, rt.ID)
 	if err != nil {
 		log.Error("failed to delete refresh token", slog.Any("err", err))
-
 		return err
 	}
 
 	log.Info("logout successful")
-
 	return nil
 }

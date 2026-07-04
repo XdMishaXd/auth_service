@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type User struct {
 	ID         int64
@@ -17,6 +21,7 @@ type App struct {
 }
 
 type RefreshToken struct {
+	ID        uuid.UUID
 	TokenHash []byte
 	UserID    int64
 	AppID     int32

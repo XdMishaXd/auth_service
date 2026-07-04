@@ -7,4 +7,5 @@ var (
 	ErrUserNotFound         = errors.New("user not found")
 	ErrAppNotFound          = errors.New("app not found")
 	ErrRefreshTokenNotFound = errors.New("refresh token not found")
+	ErrRefreshTokenConflict = errors.New("refresh token has already been rotated")
 )

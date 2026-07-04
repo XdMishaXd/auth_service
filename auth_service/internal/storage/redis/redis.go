@@ -36,11 +36,12 @@ func New(ctx context.Context, addr, pass string, db int) (*RedisRepo, error) {
 	}, nil
 }
 
-// *  SetMagicLinkPending сохраняет информацию о созданном токене
+// SetMagicLinkPending сохраняет информацию о созданном токене.
+// Используется как anti-replay слой поверх Postgres (источника истины).
 func (r *RedisRepo) SetMagicLinkPending(ctx context.Context, tokenHash string, userID int64, appID int32, ttl time.Duration) error {
 	const op = "storage.redis.SetMagicLinkPending"
 
-	key := fmt.Sprintf("2fa:pending:%s", tokenHash)
+	key := pendingKey(tokenHash)
 
 	data := map[string]interface{}{
 		"user_id":    userID,
@@ -52,63 +53,38 @@ func (r *RedisRepo) SetMagicLinkPending(ctx context.Context, tokenHash string, u
 	pipe.HSet(ctx, key, data)
 	pipe.Expire(ctx, key, ttl)
 
-	_, err := pipe.Exec(ctx)
-	if err != nil {
+	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
-// * DeleteMagicLinkPending удаляет информацию о pending токене
+// DeleteMagicLinkPending удаляет информацию о pending токене
 func (r *RedisRepo) DeleteMagicLinkPending(ctx context.Context, tokenHash string) error {
 	const op = "storage.redis.DeleteMagicLinkPending"
 
-	key := fmt.Sprintf("2fa:pending:%s", tokenHash)
+	key := pendingKey(tokenHash)
 
-	err := r.client.Del(ctx, key).Err()
-	if err != nil {
+	if err := r.client.Del(ctx, key).Err(); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
-// * InvalidateMagicLinksByHashes инвалидирует все токены по списку хешей
-func (r *RedisRepo) InvalidateMagicLinksByHashes(ctx context.Context, tokenHashes []string, ttl time.Duration) error {
-	const op = "storage.redis.InvalidateMagicLinksByHashes"
-
-	if len(tokenHashes) == 0 {
-		return nil
-	}
-
-	pipe := r.client.Pipeline()
-
-	for _, hash := range tokenHashes {
-		usedKey := fmt.Sprintf("2fa:used:%s", hash)
-		pendingKey := fmt.Sprintf("2fa:pending:%s", hash)
-
-		pipe.Set(ctx, usedKey, "invalidated", ttl)
-		pipe.Del(ctx, pendingKey)
-	}
-
-	_, err := pipe.Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
-	}
-
-	return nil
-}
-
-// * MarkMagicLinkAsUsed помечает токен как использованный (атомарно через SETNX)
-// Возвращает true если токен был использован первый раз
-// Возвращает false если токен уже был использован ранее
+// MarkMagicLinkAsUsed атомарно помечает токен как использованный (SETNX).
+// Возвращает true, если токен помечен впервые этим вызовом.
+// Возвращает false, если ключ уже существовал (replay-попытка или уже инвалидирован).
+//
+// ВАЖНО: это только anti-replay слой. Источником истины остаётся Postgres —
+// даже если этот метод вернул true, вызывающий код обязан дополнительно
+// проверить link.Used / link.ExpiresAt в Postgres, прежде чем выдавать сессию.
 func (r *RedisRepo) MarkMagicLinkAsUsed(ctx context.Context, tokenHash string, ttl time.Duration) (bool, error) {
 	const op = "storage.redis.MarkMagicLinkAsUsed"
 
-	key := fmt.Sprintf("2fa:used:%s", tokenHash)
+	key := usedKey(tokenHash)
 
-	// SETNX - атомарная операция (rate limiter на 1 запрос)
 	success, err := r.client.SetNX(ctx, key, "used", ttl).Result()
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", op, err)
@@ -117,7 +93,57 @@ func (r *RedisRepo) MarkMagicLinkAsUsed(ctx context.Context, tokenHash string, t
 	return success, nil
 }
 
-// * Close закрывает соединение с базой данных.
-func (r *RedisRepo) Close() {
-	r.client.Close()
+// IsMagicLinkUsed проверяет, помечен ли токен использованным/инвалидированным в Redis.
+// Не заменяет проверку MarkMagicLinkAsUsed — полезен для быстрого read-only чека
+// (например, до похода в Postgres), но не для атомарного списания токена.
+func (r *RedisRepo) IsMagicLinkUsed(ctx context.Context, tokenHash string) (bool, error) {
+	const op = "storage.redis.IsMagicLinkUsed"
+
+	key := usedKey(tokenHash)
+
+	exists, err := r.client.Exists(ctx, key).Result()
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return exists > 0, nil
+}
+
+// InvalidateMagicLinksByHashes инвалидирует список токенов в Redis:
+// - ставит "used"-метку, чтобы MarkMagicLinkAsUsed для них больше не проходил
+// - удаляет pending-запись, если она была
+//
+// Вызывается синхронно с PostgresRepo.InvalidateMagicLinksByUserID,
+// чтобы оба хранилища не расходились по состоянию.
+func (r *RedisRepo) InvalidateMagicLinksByHashes(ctx context.Context, tokenHashes []string, ttl time.Duration) error {
+	const op = "storage.redis.InvalidateMagicLinksByHashes"
+
+	if len(tokenHashes) == 0 {
+		return nil
+	}
+
+	pipe := r.client.Pipeline()
+	for _, hash := range tokenHashes {
+		pipe.Set(ctx, usedKey(hash), "invalidated", ttl)
+		pipe.Del(ctx, pendingKey(hash))
+	}
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+// Close закрывает соединение с Redis.
+func (r *RedisRepo) Close() error {
+	return r.client.Close()
+}
+
+func pendingKey(tokenHash string) string {
+	return fmt.Sprintf("2fa:pending:%s", tokenHash)
+}
+
+func usedKey(tokenHash string) string {
+	return fmt.Sprintf("2fa:used:%s", tokenHash)
 }

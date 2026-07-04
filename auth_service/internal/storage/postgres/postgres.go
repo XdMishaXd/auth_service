@@ -10,10 +10,10 @@ import (
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type PostgresRepo struct {
@@ -91,10 +91,10 @@ func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, er
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &models.User{}, storage.ErrUserNotFound
+			return nil, storage.ErrUserNotFound
 		}
 
-		return &models.User{}, err
+		return nil, err
 	}
 
 	return &u, err
@@ -118,7 +118,7 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, er
 		&u.IsVerified,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return &models.User{}, storage.ErrUserNotFound
+		return nil, storage.ErrUserNotFound
 	}
 
 	return &u, err
@@ -161,85 +161,98 @@ func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error
 
 func (r *PostgresRepo) SaveRefreshToken(
 	ctx context.Context,
+	id string,
 	userID int64,
 	appID int32,
 	tokenHash []byte,
 	expiresAt time.Time,
 ) error {
 	const query = `
-		INSERT INTO refresh_tokens (user_id, app_id ,token_hash, expires_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO refresh_tokens (id, user_id, app_id, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4, $5)
 	`
 
-	_, err := r.pool.Exec(ctx, query, userID, appID, tokenHash, expiresAt)
+	_, err := r.pool.Exec(ctx, query,
+		id,
+		userID,
+		appID,
+		tokenHash,
+		expiresAt,
+	)
+
 	return err
 }
 
 func (r *PostgresRepo) UpdateRefreshToken(
 	ctx context.Context,
-	userID int64,
-	oldTokenHash []byte,
+	id uuid.UUID,
 	newTokenHash []byte,
+	oldTokenHash []byte,
 	expiresAt time.Time,
 ) error {
 	const query = `
 		UPDATE refresh_tokens
-		SET token_hash = $1, expires_at = $2
-		WHERE user_id = $3 AND token_hash = $4
+		SET token_hash = $1,
+			expires_at = $2
+		WHERE id = $3 AND token_hash = $4
 	`
 
-	_, err := r.pool.Exec(ctx, query, newTokenHash, expiresAt, userID, oldTokenHash)
-	return err
+	res, err := r.pool.Exec(ctx, query,
+		newTokenHash,
+		expiresAt,
+		id,
+		oldTokenHash,
+	)
+	if err != nil {
+		return err
+	}
+
+	if res.RowsAffected() == 0 {
+		return storage.ErrRefreshTokenConflict
+	}
+
+	return nil
 }
 
-func (r *PostgresRepo) RefreshToken(ctx context.Context, rawToken string) (*models.RefreshToken, error) {
+func (r *PostgresRepo) RefreshTokenByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*models.RefreshToken, error) {
 	const query = `
-		SELECT user_id, app_id, token_hash, expires_at
+		SELECT id, user_id, app_id, token_hash, expires_at
 		FROM refresh_tokens
-		WHERE expires_at > NOW();
+		WHERE id = $1
 	`
-
-	rows, err := r.pool.Query(ctx, query)
-	if err != nil {
-		return &models.RefreshToken{}, err
-	}
-	defer rows.Close()
 
 	var rt models.RefreshToken
 
-	for rows.Next() {
-		var (
-			userID    int64
-			appID     int32
-			tokenHash []byte
-			expiresAt time.Time
-		)
-
-		err := rows.Scan(&userID, &appID, &tokenHash, &expiresAt)
-		if err != nil {
-			return &models.RefreshToken{}, err
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&rt.ID,
+		&rt.UserID,
+		&rt.AppID,
+		&rt.TokenHash,
+		&rt.ExpiresAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.ErrRefreshTokenNotFound
 		}
-
-		if bcrypt.CompareHashAndPassword(tokenHash, []byte(rawToken)) == nil {
-			rt.UserID = userID
-			rt.AppID = appID
-			rt.TokenHash = tokenHash
-			rt.ExpiresAt = expiresAt
-			return &rt, nil
-		}
-	}
-	if rows.Err() != nil {
-		return &models.RefreshToken{}, rows.Err()
+		return nil, err
 	}
 
-	return &models.RefreshToken{}, storage.ErrRefreshTokenNotFound
+	return &rt, nil
 }
 
-func (r *PostgresRepo) DeleteRefreshToken(ctx context.Context, tokenHash []byte) error {
-	query := `DELETE FROM refresh_tokens WHERE token_hash = $1`
+func (r *PostgresRepo) DeleteRefreshToken(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	const query = `
+		DELETE FROM refresh_tokens
+		WHERE id = $1
+	`
 
-	_, err := r.pool.Exec(ctx, query, tokenHash)
-
+	_, err := r.pool.Exec(ctx, query, id)
 	return err
 }
 
@@ -254,7 +267,7 @@ func (r *PostgresRepo) App(ctx context.Context, appID int32) (*models.App, error
 
 	err := r.pool.QueryRow(ctx, query, appID).Scan(&a.ID, &a.Name, &a.Secret)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return &models.App{}, storage.ErrAppNotFound
+		return nil, storage.ErrAppNotFound
 	}
 
 	return &a, err

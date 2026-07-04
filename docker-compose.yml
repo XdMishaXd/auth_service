@@ -1,4 +1,4 @@
-services:  
+services:
   postgres:
     image: postgres:latest
     container_name: auth_pg
@@ -9,33 +9,33 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d auth_service"]
       interval: 5s
       timeout: 3s
       retries: 5
-  redis:
-    image: redis:latest
-    container_name: auth_service_cache
-    restart: always
-    ports:
-      - "6379:6379"
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "password", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 15s
+  # redis:
+  #   image: redis:latest
+  #   container_name: auth_service_cache
+  #   restart: always
+  #   ports:
+  #     - "6379:6379"
+  #   command: ["redis-server", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "-a", "password", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+  #     start_period: 15s
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"    # AMQP-протокол
-      - "15672:15672"  # Веб-интерфейс
+      - "5672:5672" # AMQP-протокол
+      - "15672:15672" # Веб-интерфейс
     environment:
       RABBITMQ_DEFAULT_USER: user
       RABBITMQ_DEFAULT_PASS: password
@@ -60,7 +60,7 @@ services:
     volumes:
       - ./auth_service/config:/app/config
   mail_sender:
-    build: 
+    build:
       context: ./email_sender
       dockerfile: Dockerfile
     container_name: email_sender
