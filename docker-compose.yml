@@ -59,6 +59,12 @@ services:
         condition: service_healthy
     volumes:
       - ./auth_service/config:/app/config
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
   mail_sender:
     build:
       context: ./email_sender

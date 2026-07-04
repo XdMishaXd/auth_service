@@ -11,6 +11,7 @@ import (
 
 	"auth_service/internal/auth"
 	"auth_service/internal/config"
+	"auth_service/internal/http_server/handlers/health"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
 	"auth_service/internal/http_server/handlers/refresh"
@@ -149,6 +150,9 @@ func setupRouter(
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+
+	// Инфраструктурный эндпоинт
+	r.Get("/health", health.New())
 
 	if cfg.Swagger.Enabled {
 		r.Group(func(r chi.Router) {

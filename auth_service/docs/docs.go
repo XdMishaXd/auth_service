@@ -585,6 +585,39 @@ const docTemplate = `{
                 },
                 "x-order": 6
             }
+        },
+        "/health": {
+            "get": {
+                "description": "Checks that the service is running and able to process requests.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_health.Response"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "internal_http_server_handlers_health.Response": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
         }
     }
 }`

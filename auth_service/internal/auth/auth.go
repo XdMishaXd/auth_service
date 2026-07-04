@@ -1,6 +1,10 @@
 package auth
 
 import (
+	"auth_service/internal/lib/jwt"
+	"auth_service/internal/lib/verification"
+	"auth_service/internal/models"
+	"auth_service/internal/storage"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -10,11 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"auth_service/internal/lib/jwt"
 	sl "auth_service/internal/lib/logger"
-	"auth_service/internal/lib/verification"
-	"auth_service/internal/models"
-	"auth_service/internal/storage"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -134,7 +134,6 @@ func (a *Auth) Login(
 		return "", "", err
 	}
 
-	log.Info("user logged in successfully", slog.Int64("uid", user.ID))
 	return accessToken, refreshToken, nil
 }
 
@@ -269,8 +268,6 @@ func (a *Auth) Refresh(
 		return "", "", err
 	}
 
-	log.Info("refresh successful", slog.Int64("uid", user.ID))
-
 	return accessToken, newRefreshToken, nil
 }
 
@@ -305,15 +302,8 @@ func (a *Auth) Logout(
 	ctx context.Context,
 	rawRefreshToken string,
 ) error {
-	const op = "auth.Logout"
-
-	log := a.log.With(
-		slog.String("op", op),
-	)
-
 	parts := strings.Split(rawRefreshToken, ".")
 	if len(parts) != 2 {
-		log.Warn("invalid refresh token format")
 		return ErrInvalidCredentials
 	}
 
@@ -322,23 +312,18 @@ func (a *Auth) Logout(
 
 	rt, err := a.usrProvider.RefreshTokenByID(ctx, uuid.MustParse(tokenID))
 	if err != nil {
-		log.Warn("refresh token not found", slog.Any("err", err))
 		return ErrInvalidCredentials
 	}
 
 	sum := sha256.Sum256([]byte(secret))
 	if !bytes.Equal(rt.TokenHash, sum[:]) {
-		log.Warn("invalid refresh token")
 		return ErrInvalidCredentials
 	}
 
-	// 4. delete by ID (ВАЖНО)
 	err = a.usrSaver.DeleteRefreshToken(ctx, rt.ID)
 	if err != nil {
-		log.Error("failed to delete refresh token", slog.Any("err", err))
 		return err
 	}
 
-	log.Info("logout successful")
 	return nil
 }

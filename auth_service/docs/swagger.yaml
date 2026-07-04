@@ -1,4 +1,12 @@
 basePath: /
+definitions:
+  internal_http_server_handlers_health.Response:
+    properties:
+      error:
+        type: string
+      status:
+        type: string
+    type: object
 host: localhost:8082
 info:
   contact: {}
@@ -554,4 +562,17 @@ paths:
       tags:
       - auth
       x-order: 6
+  /health:
+    get:
+      description: Checks that the service is running and able to process requests.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_health.Response'
+      summary: Health check
+      tags:
+      - System
 swagger: "2.0"
