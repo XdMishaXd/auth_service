@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_users_id ON users (id);
 -- ==========================================================
 -- Applications
 -- ==========================================================
@@ -53,6 +54,17 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX idx_refresh_tokens_active_expires ON refresh_tokens (expires_at);
 -- полезно для revoke / cleanup конкретного пользователя
 -- CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_app ON refresh_tokens(user_id, app_id);
+-- ==========================================================
+-- Pass reset tokens
+-- ==========================================================
+CREATE TABLE password_reset_tokens (
+  id UUID PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  token_hash BYTEA NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin

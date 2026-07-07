@@ -10,6 +10,7 @@ import (
 	"auth_service/internal/auth"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/mailer"
 	"auth_service/internal/lib/verification"
 	"auth_service/internal/storage"
 
@@ -69,7 +70,7 @@ func New(
 	log *slog.Logger,
 	validate *validator.Validate,
 	authMiddleware *auth.Auth,
-	msgSender verification.Publisher,
+	msgSender mailer.Publisher,
 	verificationTokenTTL time.Duration,
 	verificationTokenSecret string,
 	address string,

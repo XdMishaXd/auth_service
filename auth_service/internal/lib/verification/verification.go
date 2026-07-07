@@ -6,19 +6,17 @@ import (
 	"log/slog"
 	"time"
 
+	"auth_service/internal/lib/mailer"
+
 	"auth_service/internal/models"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type Publisher interface {
-	SendMessage(ctx context.Context, msg models.Message) error
-}
-
 func VerifyUserEmail(
 	ctx context.Context,
 	log *slog.Logger,
-	pub Publisher,
+	pub mailer.Publisher,
 	tokenTTL time.Duration,
 	tokenSecret string,
 	userID int64,
@@ -39,7 +37,7 @@ func VerifyUserEmail(
 		Purpose: "email_verification",
 	}
 
-	if err := pub.SendMessage(ctx, msg); err != nil {
+	if err := mailer.SendVerificationEmail(ctx, pub, msg); err != nil {
 		log.Error("failed to send verification link", slog.Any("err", err))
 	}
 

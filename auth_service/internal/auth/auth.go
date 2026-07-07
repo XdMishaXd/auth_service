@@ -1,10 +1,6 @@
 package auth
 
 import (
-	"auth_service/internal/lib/jwt"
-	"auth_service/internal/lib/verification"
-	"auth_service/internal/models"
-	"auth_service/internal/storage"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -13,6 +9,11 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"auth_service/internal/lib/jwt"
+	"auth_service/internal/lib/verification"
+	"auth_service/internal/models"
+	"auth_service/internal/storage"
 
 	sl "auth_service/internal/lib/logger"
 
@@ -35,19 +36,23 @@ type Auth struct {
 	appProvider AppProvider
 	tokenTTL    time.Duration
 	refreshTTL  time.Duration
+	resetTTL    time.Duration
 }
 
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (uid int64, err error)
 
 	SaveRefreshToken(ctx context.Context, id string, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
+	SaveResetToken(ctx context.Context, tokenID uuid.UUID, userID int64, tokenHash []byte, expiresAt time.Time) error
 	UpdateRefreshToken(ctx context.Context, id uuid.UUID, newTokenHash []byte, oldTokenHash []byte, expiresAt time.Time) error
 	DeleteRefreshToken(ctx context.Context, id uuid.UUID) error
+	DeleteAllResetTokens(ctx context.Context, uid int64) error
 }
 
 type UserProvider interface {
 	User(ctx context.Context, email string) (*models.User, error)
 	UserByID(ctx context.Context, id int64) (*models.User, error)
+	UserByEmail(ctx context.Context, email string) (int64, error)
 	RefreshTokenByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
 	SetEmailVerified(ctx context.Context, uid int64) error
 	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
@@ -326,4 +331,45 @@ func (a *Auth) Logout(
 	}
 
 	return nil
+}
+
+func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
+	const op = "auth.ForgotPass"
+
+	log := a.log.With(
+		slog.String("op", op),
+	)
+
+	uid, err := a.usrProvider.UserByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+
+	err = a.usrSaver.DeleteAllResetTokens(ctx, uid)
+	if err != nil {
+		log.Error("Failed to delete reset tokens", sl.Err(err))
+
+		return "", err
+	}
+
+	tokenID, resetToken, hash, err := jwt.NewRefreshToken("")
+	if err != nil {
+		log.Error("Failed to generate reset token", sl.Err(err))
+
+		return "", err
+	}
+
+	err = a.usrSaver.SaveResetToken(
+		ctx,
+		uuid.MustParse(tokenID),
+		uid,
+		hash,
+		time.Now().Add(a.resetTTL),
+	)
+	if err != nil {
+		log.Error("Failed to save reset token", sl.Err(err))
+		return "", err
+	}
+
+	return resetToken, nil
 }

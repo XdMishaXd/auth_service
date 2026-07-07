@@ -44,10 +44,8 @@ func NewRefreshToken(id string) (string, string, []byte, error) {
 
 	token := base64.RawURLEncoding.EncodeToString(b)
 
-	// итоговый refresh token (то, что отдаём клиенту)
 	fullToken := id + "." + token
 
-	// SHA-256 хэш для хранения в БД
 	sum := sha256.Sum256([]byte(token))
 	hash := sum[:]
 

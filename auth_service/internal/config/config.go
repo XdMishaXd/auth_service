@@ -54,7 +54,8 @@ type Redis struct {
 type Tokens struct {
 	AccessTokenTTL          time.Duration `yaml:"access_token_ttl" env-required:"true"`
 	RefreshTokenTTL         time.Duration `yaml:"refresh_token_ttl" env-required:"true"`
-	VerificationTokenTTL    time.Duration `yaml:"verification_token_ttl" env-required:"true"`
+	VerificationTokenTTL    time.Duration `yaml:"verification_token_ttl" env-default:"15m"`
+	ResetTokenTTL           time.Duration `yaml:"reset_token_ttl" env-default:"15m"`
 	VerificationTokenSecret string        `yaml:"verification_token_secret" env-required:"true"`
 }
 

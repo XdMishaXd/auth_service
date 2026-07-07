@@ -124,6 +124,24 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, er
 	return &u, err
 }
 
+func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (int64, error) {
+	query := `
+		SELECT id
+		FROM users
+		WHERE email = $1;
+	`
+
+	row := r.pool.QueryRow(ctx, query, email)
+
+	var u models.User
+	err := row.Scan(&u.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return -1, storage.ErrUserNotFound
+	}
+
+	return u.ID, err
+}
+
 // * CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
 func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error) {
 	query := `	
@@ -271,6 +289,44 @@ func (r *PostgresRepo) App(ctx context.Context, appID int32) (*models.App, error
 	}
 
 	return &a, err
+}
+
+func (r *PostgresRepo) SaveResetToken(
+	ctx context.Context,
+	tokenID uuid.UUID,
+	userID int64,
+	tokenHash []byte,
+	expiresAt time.Time,
+) error {
+	query := `
+		INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3, $4)
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		tokenID,
+		userID,
+		tokenHash,
+		expiresAt,
+	)
+
+	return err
+}
+
+func (r *PostgresRepo) DeleteAllResetTokens(ctx context.Context, uid int64) error {
+	const op = "postgres.DeleteAllResetTokens"
+
+	query := `
+		DELETE
+		FROM password_reset_tokens
+		WHERE user_id = $1
+	`
+	_, err := r.pool.Exec(ctx, query, uid)
+	if err != nil {
+		return fmt.Errorf("%s: failed to save user: %w", op, err)
+	}
+
+	return nil
 }
 
 // * SaveMagicLink сохраняет magic link

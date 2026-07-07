@@ -1,4 +1,4 @@
-env: "prod" # local, dev, prod 
+env: "local" # local, dev, prod
 
 swagger:
   username: "admin"
@@ -9,6 +9,7 @@ tokens:
   access_token_ttl: 1h
   refresh_token_ttl: 168h
   verification_token_ttl: 15m
+  reset_token_ttl: 15m
   verification_token_secret: "123o;rnfdjh1^%I@!$N&RJHDF*&T!#@$HADF&T"
 
 two_factor_auth:
