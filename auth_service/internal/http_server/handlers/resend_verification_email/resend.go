@@ -76,6 +76,7 @@ func New(
 	verificationTokenTTL time.Duration,
 	verificationTokenSecret string,
 	address string,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.resendVerificationEmail.New"
@@ -110,7 +111,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		userID, isVerified, err := authMiddleware.CheckUserVerification(ctx, req.Email)

@@ -31,6 +31,14 @@ func ResendVerificationEmail() func(http.Handler) http.Handler {
 	return limitByIP(3, time.Hour)
 }
 
+func ForgotPassword() func(http.Handler) http.Handler {
+	return limitByIP(3, time.Hour)
+}
+
+func ResetPassword() func(http.Handler) http.Handler {
+	return limitByIP(10, 10*time.Minute)
+}
+
 func limitByIP(limit int, window time.Duration) func(http.Handler) http.Handler {
 	return httprate.Limit(limit, window)
 }

@@ -52,7 +52,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	storage, err := postgres.New(ctx, cfg)
+	storage, err := postgres.New(ctx, cfg, log)
 	if err != nil {
 		log.Error("failed to connect postgres", slog.String("err", err.Error()))
 		os.Exit(1)
@@ -171,19 +171,25 @@ func setupRouter(
 				cfg.Tokens.VerificationTokenTTL,
 				cfg.Tokens.VerificationTokenSecret,
 				cfg.HTTPServer.Address,
+				cfg.HTTPServer.HandlersTimeout,
 			),
 		)
 		r.With(rateLimit.Login()).Post("/login",
-			login.New(log, validate, authService),
+			login.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
 		r.With(rateLimit.Refresh()).Post("/refresh",
-			refresh.New(log, validate, authService),
+			refresh.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
 		r.With(rateLimit.Logout()).Post("/logout",
-			logout.New(log, validate, authService),
+			logout.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
 		r.With(rateLimit.Verify()).Get("/verify",
-			verify.New(log, authService, cfg.Tokens.VerificationTokenSecret),
+			verify.New(
+				log,
+				authService,
+				cfg.Tokens.VerificationTokenSecret,
+				cfg.HTTPServer.HandlersTimeout,
+			),
 		)
 		r.With(rateLimit.ResendVerificationEmail()).Post("/verify/resend",
 			resendEmail.New(
@@ -194,6 +200,7 @@ func setupRouter(
 				cfg.Tokens.VerificationTokenTTL,
 				cfg.Tokens.VerificationTokenSecret,
 				cfg.HTTPServer.Address,
+				cfg.HTTPServer.HandlersTimeout,
 			),
 		)
 	})

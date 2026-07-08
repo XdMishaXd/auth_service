@@ -74,6 +74,7 @@ func New(
 	verificationTokenTTL time.Duration,
 	verificationTokenSecret string,
 	address string,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.register.New"
@@ -108,7 +109,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		userID, err := authMiddleware.RegisterNewUser(ctx, req.Email, req.Username, req.Pass)

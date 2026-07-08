@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"auth_service/internal/config"
+	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
@@ -18,9 +20,10 @@ import (
 
 type PostgresRepo struct {
 	pool *pgxpool.Pool
+	log  *slog.Logger
 }
 
-func New(ctx context.Context, cfg *config.Config) (*PostgresRepo, error) {
+func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*PostgresRepo, error) {
 	const op = "storage.postgres.New"
 
 	dsn := dsn(cfg)
@@ -45,7 +48,7 @@ func New(ctx context.Context, cfg *config.Config) (*PostgresRepo, error) {
 		return nil, fmt.Errorf("%s: failed to ping database: %w", op, err)
 	}
 
-	return &PostgresRepo{pool: pool}, nil
+	return &PostgresRepo{pool: pool, log: log}, nil
 }
 
 func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, passHash []byte) (int64, error) {
@@ -255,6 +258,7 @@ func (r *PostgresRepo) RefreshTokenByID(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.ErrRefreshTokenNotFound
 		}
+
 		return nil, err
 	}
 
@@ -313,6 +317,33 @@ func (r *PostgresRepo) SaveResetToken(
 	return err
 }
 
+func (r *PostgresRepo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.ResetToken, error) {
+	query := `
+		SELECT *
+		FROM password_reset_tokens
+		WHERE id = $1
+	`
+
+	var rt models.ResetToken
+
+	err := r.pool.QueryRow(ctx, query, tokenID).Scan(
+		&rt.ID,
+		&rt.UserID,
+		&rt.TokenHash,
+		&rt.ExpiresAt,
+		&rt.UsedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.ErrResetTokenNotFound
+		}
+
+		return nil, err
+	}
+
+	return &rt, nil
+}
+
 func (r *PostgresRepo) DeleteAllResetTokens(ctx context.Context, uid int64) error {
 	const op = "postgres.DeleteAllResetTokens"
 
@@ -326,6 +357,72 @@ func (r *PostgresRepo) DeleteAllResetTokens(ctx context.Context, uid int64) erro
 		return fmt.Errorf("%s: failed to save user: %w", op, err)
 	}
 
+	return nil
+}
+
+func (r *PostgresRepo) ResetPassword(
+	ctx context.Context,
+	userID int64,
+	tokenID uuid.UUID,
+	newPasswordHash []byte,
+) error {
+	const op = "storage.postgres.ResetPassword"
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("%s: begin tx: %w", op, err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			r.log.Error("rollback failed", sl.Err(err))
+		}
+	}()
+
+	// Шаг 1: атомарно занимаем токен — только один конкурентный вызов пройдёт это условие
+	const invalidateTokenQuery = `
+    UPDATE password_reset_tokens
+    SET used_at = NOW()
+    WHERE id = $1 AND user_id = $2 AND used_at IS NULL
+  `
+	res, err := tx.Exec(ctx, invalidateTokenQuery, tokenID, userID)
+	if err != nil {
+		return fmt.Errorf("%s: invalidate token: %w", op, err)
+	}
+	if res.RowsAffected() == 0 {
+		// Либо уже использован конкурентным запросом, либо не существует/чужой
+		return storage.ErrResetTokenUsed
+	}
+
+	const updatePasswordQuery = `
+    UPDATE users SET password_hash = $1 WHERE id = $2
+  `
+	res, err = tx.Exec(ctx, updatePasswordQuery, newPasswordHash, userID)
+	if err != nil {
+		return fmt.Errorf("%s: update password: %w", op, err)
+	}
+	if res.RowsAffected() == 0 {
+		return storage.ErrUserNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("%s: delete refresh tokens: %w", op, err)
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("%s: delete reset tokens: %w", op, err)
+	}
+
+	const invalidateMagicLinksQuery = `
+    UPDATE magic_links SET used = TRUE, used_at = NOW()
+    WHERE user_id = $1 AND used = FALSE
+  `
+	if _, err := tx.Exec(ctx, invalidateMagicLinksQuery, userID); err != nil {
+		return fmt.Errorf("%s: invalidate magic links: %w", op, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%s: commit: %w", op, err)
+	}
 	return nil
 }
 

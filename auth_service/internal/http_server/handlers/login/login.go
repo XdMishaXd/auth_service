@@ -68,6 +68,7 @@ func New(
 	log *slog.Logger,
 	validate *validator.Validate,
 	authMiddleware *auth.Auth,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.login.New"
@@ -102,7 +103,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		accessToken, refreshToken, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID)

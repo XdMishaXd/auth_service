@@ -28,6 +28,14 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 }
 
+type ResetToken struct {
+	ID        uuid.UUID
+	TokenHash []byte
+	UserID    int64
+	UsedAt    time.Time
+	ExpiresAt time.Time
+}
+
 type Message struct {
 	Email   string `json:"to"`
 	Link    string `json:"link"`

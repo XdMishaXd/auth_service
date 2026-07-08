@@ -26,12 +26,25 @@ type Response struct {
 	resp.Response
 }
 
+// New godoc
+// @Summary      Request password reset
+// @Description  Initiates a password reset flow for the given email. Always returns 200 OK
+// @Description  regardless of whether the email exists, to avoid user enumeration.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body forgot.Request true "User email"
+// @Success      200 {object} forgot.Response "Reset email sent if account exists"
+// @Failure      400 {object} response.Response "Invalid request body or validation error"
+// @Failure      500 {object} response.Response "Internal server error"
+// @Router       /auth/password/forgot [post]
 func New(
 	log *slog.Logger,
 	validate *validator.Validate,
 	msgSender mailer.Publisher,
 	authMiddleware *auth.Auth,
 	address string,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.password.forgot.New"
@@ -66,7 +79,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		resetToken, err := authMiddleware.Forgot(ctx, req.Email)

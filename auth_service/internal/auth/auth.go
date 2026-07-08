@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -27,6 +28,8 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidAppID       = errors.New("invalid app id")
 	ErrEmailNotVerified   = errors.New("email not verified")
+	ErrResetTokenExpired  = errors.New("Reset token expired")
+	ErrResetTokenUsed     = errors.New("reset token already used")
 )
 
 type Auth struct {
@@ -43,9 +46,10 @@ type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (uid int64, err error)
 
 	SaveRefreshToken(ctx context.Context, id string, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
-	SaveResetToken(ctx context.Context, tokenID uuid.UUID, userID int64, tokenHash []byte, expiresAt time.Time) error
 	UpdateRefreshToken(ctx context.Context, id uuid.UUID, newTokenHash []byte, oldTokenHash []byte, expiresAt time.Time) error
 	DeleteRefreshToken(ctx context.Context, id uuid.UUID) error
+
+	SaveResetToken(ctx context.Context, tokenID uuid.UUID, userID int64, tokenHash []byte, expiresAt time.Time) error
 	DeleteAllResetTokens(ctx context.Context, uid int64) error
 }
 
@@ -53,7 +57,12 @@ type UserProvider interface {
 	User(ctx context.Context, email string) (*models.User, error)
 	UserByID(ctx context.Context, id int64) (*models.User, error)
 	UserByEmail(ctx context.Context, email string) (int64, error)
+
 	RefreshTokenByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
+
+	ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.ResetToken, error)
+	ResetPassword(ctx context.Context, userID int64, tokenID uuid.UUID, newPasswordHash []byte) error
+
 	SetEmailVerified(ctx context.Context, uid int64) error
 	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
 }
@@ -372,4 +381,49 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 	}
 
 	return resetToken, nil
+}
+
+func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass string) error {
+	const op = "auth.ResetPassword"
+
+	log := a.log.With(slog.String("op", op))
+
+	uid, err := uuid.Parse(tokenID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+	}
+
+	rt, err := a.usrProvider.ResetTokenByID(ctx, uid)
+	if err != nil {
+		log.Error("failed to get reset token", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if time.Now().After(rt.ExpiresAt) {
+		log.Warn("reset token expired")
+		return ErrResetTokenExpired
+	}
+	if !rt.UsedAt.IsZero() {
+		log.Warn("reset token already used")
+		return ErrResetTokenUsed
+	}
+
+	sum := sha256.Sum256([]byte(verifier))
+	if subtle.ConstantTimeCompare(rt.TokenHash, sum[:]) != 1 {
+		log.Warn("verifier mismatch")
+		return ErrInvalidCredentials
+	}
+
+	passHash, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
+	if err != nil {
+		log.Error("failed to generate password hash", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if err := a.usrProvider.ResetPassword(ctx, rt.UserID, rt.ID, passHash); err != nil {
+		log.Error("failed to reset password", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

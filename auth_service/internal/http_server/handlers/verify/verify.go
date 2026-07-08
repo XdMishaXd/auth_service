@@ -61,6 +61,7 @@ func New(
 	log *slog.Logger,
 	authMiddleware *auth.Auth,
 	tokenSecret string,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.verify.New"
@@ -90,7 +91,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		if err := authMiddleware.VerifyUser(ctx, token, tokenSecret); err != nil {
