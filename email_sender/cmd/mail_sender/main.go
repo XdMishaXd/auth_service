@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
-	"email_sender/internal/config"
-	sl "email_sender/internal/lib/logger"
-	mailer "email_sender/internal/mail-sender"
-	"email_sender/internal/models"
-	"email_sender/internal/rabbitmq"
 	"encoding/json"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"email_sender/internal/config"
+	sl "email_sender/internal/lib/logger"
+	mailer "email_sender/internal/mail-sender"
+	"email_sender/internal/models"
+	"email_sender/internal/rabbitmq"
 )
 
 const (
@@ -59,9 +60,11 @@ func startServer(ctx context.Context, cfg *config.Config, log *slog.Logger) {
 				return
 			}
 
-			err := m.Send(emailMsg.Email,
-				emailMsg.Subject,
+			err := m.Send(
+				emailMsg.Email,
+				cfg.Email.Username,
 				"http://localhost"+emailMsg.MessageText,
+				emailMsg.Purpose,
 			)
 			if err != nil {
 				log.Error("failed to send message", sl.Err(err))

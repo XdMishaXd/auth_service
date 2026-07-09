@@ -9,11 +9,17 @@ type Mailer struct {
 	Password string
 }
 
-func (m *Mailer) Send(to, username, body string) error {
+func (m *Mailer) Send(to, from, body, purpose string) error {
 	msg := gomail.NewMessage()
 	msg.SetHeader("To", to)
 	msg.SetHeader("From", m.Username)
-	msg.SetHeader("Subject", "Подтверждение почты")
+
+	switch {
+	case purpose == "reset_password":
+		msg.SetHeader("Subject", "Сброс пароля")
+	case purpose == "email_verification":
+		msg.SetHeader("Subject", "Подтверждение почты")
+	}
 
 	msg.SetBody("text/plain", body)
 

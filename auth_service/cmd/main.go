@@ -14,10 +14,13 @@ import (
 	"auth_service/internal/http_server/handlers/health"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
+	"auth_service/internal/http_server/handlers/password/forgot"
+	"auth_service/internal/http_server/handlers/password/reset"
 	"auth_service/internal/http_server/handlers/refresh"
 	register "auth_service/internal/http_server/handlers/register"
 	resendEmail "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
+	customValidator "auth_service/internal/lib/custom_validator"
 	rateLimit "auth_service/internal/middleware/ratelimit"
 	swaggerAuth "auth_service/internal/middleware/swagger-auth"
 	"auth_service/internal/rabbitmq"
@@ -81,9 +84,10 @@ func main() {
 		storage,
 		cfg.Tokens.AccessTokenTTL,
 		cfg.Tokens.RefreshTokenTTL,
+		cfg.Tokens.ResetTokenTTL,
 	)
 
-	requestValidator := validator.New()
+	requestValidator := customValidator.New()
 
 	router := setupRouter(
 		log,
@@ -200,6 +204,26 @@ func setupRouter(
 				cfg.Tokens.VerificationTokenTTL,
 				cfg.Tokens.VerificationTokenSecret,
 				cfg.HTTPServer.Address,
+				cfg.HTTPServer.HandlersTimeout,
+			),
+		)
+
+		r.With(rateLimit.ForgotPassword()).Post("/password/forgot",
+			forgot.New(
+				log,
+				validate,
+				msgBroker,
+				authService,
+				cfg.HTTPServer.Address,
+				cfg.HTTPServer.HandlersTimeout,
+			),
+		)
+
+		r.With(rateLimit.ResetPassword()).Post("/password/reset",
+			reset.New(
+				log,
+				validate,
+				authService,
 				cfg.HTTPServer.HandlersTimeout,
 			),
 		)

@@ -32,7 +32,7 @@ type ResetToken struct {
 	ID        uuid.UUID
 	TokenHash []byte
 	UserID    int64
-	UsedAt    time.Time
+	UsedAt    *time.Time
 	ExpiresAt time.Time
 }
 

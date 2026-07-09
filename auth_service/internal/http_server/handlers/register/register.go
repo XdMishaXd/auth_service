@@ -22,7 +22,7 @@ import (
 type Request struct {
 	Email    string `json:"email" validate:"required,email"`
 	Username string `json:"username" validate:"required"`
-	Pass     string `json:"password" validate:"required"`
+	Pass     string `json:"password" validate:"required,min=8"`
 }
 
 type Response struct {
@@ -98,15 +98,15 @@ func New(
 
 		log.Info("Request body decoded")
 
-		if err := validate.Struct(req); err != nil {
-			validateErr := err.(validator.ValidationErrors)
+		var validateErr validator.ValidationErrors
 
-			log.Error("Invalid request", sl.Err(err))
-
+		if errors.As(err, &validateErr) {
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.ValidationError(validateErr))
-
-			return
+		} else {
+			log.Error("unexpected validation error type", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("internal error"))
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)

@@ -318,12 +318,11 @@ func (r *PostgresRepo) SaveResetToken(
 }
 
 func (r *PostgresRepo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.ResetToken, error) {
-	query := `
-		SELECT *
+	const query = `
+		SELECT id, user_id, token_hash, expires_at, used_at
 		FROM password_reset_tokens
 		WHERE id = $1
 	`
-
 	var rt models.ResetToken
 
 	err := r.pool.QueryRow(ctx, query, tokenID).Scan(
@@ -338,7 +337,7 @@ func (r *PostgresRepo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*
 			return nil, storage.ErrResetTokenNotFound
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("scan reset token %s: %w", tokenID, err)
 	}
 
 	return &rt, nil

@@ -28,15 +28,19 @@ type Response struct {
 
 // New godoc
 // @Summary      Request password reset
-// @Description  Initiates a password reset flow for the given email. Always returns 200 OK
-// @Description  regardless of whether the email exists, to avoid user enumeration.
+// @Description  Initiates a password reset flow for the given email address.
+// @Description  Always returns 200 OK regardless of whether the account exists,
+// @Description  to prevent user enumeration. If the account exists, a reset link
+// @Description  is sent to the provided email; delivery failures are logged
+// @Description  server-side and do not affect the response.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
 // @Param        request body forgot.Request true "User email"
-// @Success      200 {object} forgot.Response "Reset email sent if account exists"
+// @Success      200 {object} forgot.Response "Request accepted (does not confirm account existence)"
 // @Failure      400 {object} response.Response "Invalid request body or validation error"
-// @Failure      500 {object} response.Response "Internal server error"
+// @Failure      429 {object} response.Response "Rate limit exceeded"
+// @Failure      500 {object} response.Response "Internal server error (token generation failure, not related to email existence)"
 // @Router       /auth/password/forgot [post]
 func New(
 	log *slog.Logger,
@@ -68,15 +72,15 @@ func New(
 
 		log.Info("Request body decoded")
 
-		if err := validate.Struct(req); err != nil {
-			validateErr := err.(validator.ValidationErrors)
+		var validateErr validator.ValidationErrors
 
-			log.Error("Invalid request", sl.Err(err))
-
+		if errors.As(err, &validateErr) {
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.ValidationError(validateErr))
-
-			return
+		} else {
+			log.Error("unexpected validation error type", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("internal error"))
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
@@ -85,10 +89,12 @@ func New(
 		resetToken, err := authMiddleware.Forgot(ctx, req.Email)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserNotFound) {
+				log.Info("forgot password requested for non-existent email")
 				ResponseOK(w, r)
-
 				return
 			}
+
+			log.Error("failed to generate reset token", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -97,11 +103,8 @@ func New(
 		}
 
 		if err := mailer.SendResetPassEmail(ctx, msgSender, resetToken, address, req.Email); err != nil {
-			log.Error("Failed to send message", sl.Err(err))
-
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, resp.Error("Internal error"))
-
+			log.Error("failed to send reset email, user will not receive it", sl.Err(err))
+			ResponseOK(w, r)
 			return
 		}
 

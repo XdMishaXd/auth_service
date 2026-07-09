@@ -1,10 +1,7 @@
 package auth
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +9,7 @@ import (
 	"time"
 
 	"auth_service/internal/lib/jwt"
+	"auth_service/internal/lib/tokens"
 	"auth_service/internal/lib/verification"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
@@ -28,8 +26,9 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidAppID       = errors.New("invalid app id")
 	ErrEmailNotVerified   = errors.New("email not verified")
-	ErrResetTokenExpired  = errors.New("Reset token expired")
+	ErrResetTokenExpired  = errors.New("reset token expired")
 	ErrResetTokenUsed     = errors.New("reset token already used")
+	ErrSamePassword       = errors.New("new password is the same as the old one")
 )
 
 type Auth struct {
@@ -76,15 +75,16 @@ func New(
 	userSaver UserSaver,
 	userProvider UserProvider,
 	appProvider AppProvider,
-	tokenTTL, refreshTTL time.Duration,
+	jwtTTL, refreshTTL, resetTTL time.Duration,
 ) *Auth {
 	return &Auth{
 		usrSaver:    userSaver,
 		usrProvider: userProvider,
 		appProvider: appProvider,
 		log:         log,
-		tokenTTL:    tokenTTL,
+		tokenTTL:    jwtTTL,
 		refreshTTL:  refreshTTL,
+		resetTTL:    resetTTL,
 	}
 }
 
@@ -129,7 +129,7 @@ func (a *Auth) Login(
 		return "", "", err
 	}
 
-	tokenID, refreshToken, hash, err := jwt.NewRefreshToken("")
+	tokenID, refreshToken, hash, err := tokens.NewRefreshToken("")
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", err
@@ -240,9 +240,7 @@ func (a *Auth) Refresh(
 		log.Warn("refresh token expired")
 		return "", "", ErrInvalidCredentials
 	}
-
-	sum := sha256.Sum256([]byte(secret))
-	if !bytes.Equal(rt.TokenHash, sum[:]) {
+	if !tokens.VerifyOpaqueToken(secret, rt.TokenHash) {
 		log.Warn("invalid refresh token")
 		return "", "", ErrInvalidCredentials
 	}
@@ -264,7 +262,7 @@ func (a *Auth) Refresh(
 		return "", "", err
 	}
 
-	_, newRefreshToken, newHash, err := jwt.NewRefreshToken(tokenID)
+	_, newRefreshToken, newHash, err := tokens.NewRefreshToken(tokenID)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", err
@@ -329,8 +327,7 @@ func (a *Auth) Logout(
 		return ErrInvalidCredentials
 	}
 
-	sum := sha256.Sum256([]byte(secret))
-	if !bytes.Equal(rt.TokenHash, sum[:]) {
+	if !tokens.VerifyOpaqueToken(secret, rt.TokenHash) {
 		return ErrInvalidCredentials
 	}
 
@@ -361,7 +358,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 		return "", err
 	}
 
-	tokenID, resetToken, hash, err := jwt.NewRefreshToken("")
+	tokenID, resetToken, hash, err := tokens.NewResetToken("")
 	if err != nil {
 		log.Error("Failed to generate reset token", sl.Err(err))
 
@@ -386,8 +383,6 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass string) error {
 	const op = "auth.ResetPassword"
 
-	log := a.log.With(slog.String("op", op))
-
 	uid, err := uuid.Parse(tokenID)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
@@ -395,33 +390,34 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 
 	rt, err := a.usrProvider.ResetTokenByID(ctx, uid)
 	if err != nil {
-		log.Error("failed to get reset token", sl.Err(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	if time.Now().After(rt.ExpiresAt) {
-		log.Warn("reset token expired")
 		return ErrResetTokenExpired
 	}
-	if !rt.UsedAt.IsZero() {
-		log.Warn("reset token already used")
+	if rt.UsedAt != nil {
 		return ErrResetTokenUsed
 	}
-
-	sum := sha256.Sum256([]byte(verifier))
-	if subtle.ConstantTimeCompare(rt.TokenHash, sum[:]) != 1 {
-		log.Warn("verifier mismatch")
+	if !tokens.VerifyOpaqueToken(verifier, rt.TokenHash) {
 		return ErrInvalidCredentials
+	}
+
+	user, err := a.usrProvider.UserByID(ctx, rt.UserID)
+	if err != nil {
+		return fmt.Errorf("%s: get user: %w", op, err)
+	}
+
+	if bcrypt.CompareHashAndPassword(user.PassHash, []byte(newPass)) == nil {
+		return ErrSamePassword
 	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
 	if err != nil {
-		log.Error("failed to generate password hash", sl.Err(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	if err := a.usrProvider.ResetPassword(ctx, rt.UserID, rt.ID, passHash); err != nil {
-		log.Error("failed to reset password", sl.Err(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
