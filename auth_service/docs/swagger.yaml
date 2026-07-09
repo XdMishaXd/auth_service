@@ -202,6 +202,126 @@ paths:
       tags:
       - auth
       x-order: 4
+  /auth/password/forgot:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Initiates a password reset flow for the given email address.
+        Always returns 200 OK regardless of whether the account exists,
+        to prevent user enumeration. If the account exists, a reset link
+        is sent to the provided email; delivery failures are logged
+        server-side and do not affect the response.
+      parameters:
+      - description: Email пользователя
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            email:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Запрос принят (не подтверждает существование аккаунта)"  example({"status":
+            "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Невалидное тело запроса или ошибка валидации"  example({"status":
+            "error", "error": "field Email must be a valid email"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "429":
+          description: 'Превышен лимит запросов"  example({"status": "error", "error":
+            "rate limit exceeded"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера (не связана с существованием email)"  example({"status":
+            "error", "error": "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Request password reset
+      tags:
+      - auth
+  /auth/password/reset:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Resets user password using a reset token received via email.
+        The token must be provided in the request body in "selector.verifier" format,
+        where selector is a UUID and verifier is a URL-safe base64 string.
+        The token is single-use and is invalidated after a successful reset.
+        The new password must be at least 8 characters and differ from the current password.
+      parameters:
+      - description: Reset токен и новый пароль
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            password:
+              type: string
+            token:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Пароль успешно сброшен"  example({"status": "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Невалидный формат токена, истёкший/использованный/неверный
+            токен, некорректный пароль, либо пароль совпадает с текущим"  example({"status":
+            "error", "error": "Invalid or expired token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Reset password
+      tags:
+      - auth
   /auth/refresh:
     post:
       consumes:

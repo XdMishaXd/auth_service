@@ -229,6 +229,167 @@ const docTemplate = `{
                 "x-order": 4
             }
         },
+        "/auth/password/forgot": {
+            "post": {
+                "description": "Initiates a password reset flow for the given email address.\nAlways returns 200 OK regardless of whether the account exists,\nto prevent user enumeration. If the account exists, a reset link\nis sent to the provided email; delivery failures are logged\nserver-side and do not affect the response.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Request password reset",
+                "parameters": [
+                    {
+                        "description": "Email пользователя",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "email": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Запрос принят (не подтверждает существование аккаунта)\"  example({\"status\": \"ok\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидное тело запроса или ошибка валидации\"  example({\"status\": \"error\", \"error\": \"field Email must be a valid email\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Превышен лимит запросов\"  example({\"status\": \"error\", \"error\": \"rate limit exceeded\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера (не связана с существованием email)\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/password/reset": {
+            "post": {
+                "description": "Resets user password using a reset token received via email.\nThe token must be provided in the request body in \"selector.verifier\" format,\nwhere selector is a UUID and verifier is a URL-safe base64 string.\nThe token is single-use and is invalidated after a successful reset.\nThe new password must be at least 8 characters and differ from the current password.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Reset password",
+                "parameters": [
+                    {
+                        "description": "Reset токен и новый пароль",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "password": {
+                                    "type": "string"
+                                },
+                                "token": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Пароль успешно сброшен\"  example({\"status\": \"ok\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный формат токена, истёкший/использованный/неверный токен, некорректный пароль, либо пароль совпадает с текущим\"  example({\"status\": \"error\", \"error\": \"Invalid or expired token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/refresh": {
             "post": {
                 "description": "## Описание\nОбменивает действующий refresh токен на новую пару токенов (access и refresh).\n\n### Процесс обновления:\n1. Валидация refresh токена (подпись JWT, срок действия)\n2. Извлечение user_id и app_id из payload токена\n3. Проверка что токен не находится в blacklist (Redis)\n4. Проверка статуса пользователя (не заблокирован, email подтвержден)\n5. Генерация новой пары токенов:\n- Новый access токен (TTL: 15 минут)\n- Новый refresh токен (TTL: 30 дней)\n6. Инвалидация старого refresh токена (token rotation)\n7. Сохранение нового refresh токена в БД\n\n### Token Rotation (безопасность):\n- **Каждый refresh токен одноразовый** — после использования старый токен инвалидируется\n- Это защищает от атак с украденными токенами\n- При попытке использовать старый токен — все сессии пользователя инвалидируются\n\n### Время жизни токенов:\n- **Access Token**: 15 минут (короткий для безопасности)\n- **Refresh Token**: 30 дней (удобство для пользователя)\n- Если пользователь неактивен 30 дней — требуется повторный login\n\n### Когда использовать:\n- Access токен истек (получили 401 на защищенном endpoint)\n- Превентивное обновление перед истечением access токена\n- После длительного простоя приложения\n\n### Ошибки:\n- ` + "`" + `400` + "`" + `: Невалидный JSON или отсутствует refresh_token\n- ` + "`" + `401` + "`" + `: Токен истек, невалиден или уже использован\n- ` + "`" + `403` + "`" + `: Пользователь заблокирован\n- ` + "`" + `500` + "`" + `: Ошибка БД или генерации токенов",

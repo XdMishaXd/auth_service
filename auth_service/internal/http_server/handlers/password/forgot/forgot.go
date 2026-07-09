@@ -36,11 +36,11 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request body forgot.Request true "User email"
-// @Success      200 {object} forgot.Response "Request accepted (does not confirm account existence)"
-// @Failure      400 {object} response.Response "Invalid request body or validation error"
-// @Failure      429 {object} response.Response "Rate limit exceeded"
-// @Failure      500 {object} response.Response "Internal server error (token generation failure, not related to email existence)"
+// @Param        request  body  object{email=string}  true  "Email пользователя"  example({"email": "user@example.com"})
+// @Success      200  {object}  object{status=string}  "Запрос принят (не подтверждает существование аккаунта)"  example({"status": "ok"})
+// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса или ошибка валидации"  example({"status": "error", "error": "field Email must be a valid email"})
+// @Failure      429  {object}  object{status=string,error=string}  "Превышен лимит запросов"  example({"status": "error", "error": "rate limit exceeded"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера (не связана с существованием email)"  example({"status": "error", "error": "Internal error"})
 // @Router       /auth/password/forgot [post]
 func New(
 	log *slog.Logger,

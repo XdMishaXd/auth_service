@@ -38,10 +38,10 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request body reset.Request true "Reset token and new password"
-// @Success      200 {object} reset.Response "Password successfully reset"
-// @Failure      400 {object} response.Response "Invalid token format, expired/used/invalid token, invalid or too short password, password same as current"
-// @Failure      500 {object} response.Response "Internal server error"
+// @Param        request  body  object{token=string,password=string}  true  "Reset токен и новый пароль"  example({"token": "550e8400-e29b-41d4-a716-446655440000.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "password": "newSecurePass123"})
+// @Success      200  {object}  object{status=string}  "Пароль успешно сброшен"  example({"status": "ok"})
+// @Failure      400  {object}  object{status=string,error=string}  "Невалидный формат токена, истёкший/использованный/неверный токен, некорректный пароль, либо пароль совпадает с текущим"  example({"status": "error", "error": "Invalid or expired token"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
 // @Router       /auth/password/reset [post]
 func New(
 	log *slog.Logger,
