@@ -71,15 +71,21 @@ func New(
 
 		log.Info("Request body decoded")
 
-		var validateErr validator.ValidationErrors
+		if err = validate.Struct(req); err != nil {
+			var validateErr validator.ValidationErrors
 
-		if errors.As(err, &validateErr) {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.ValidationError(validateErr))
-		} else {
+			if errors.As(err, &validateErr) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, resp.ValidationError(validateErr))
+
+				return
+			}
+
 			log.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
+
+			return
 		}
 
 		parts := strings.SplitN(req.Token, ".", 2)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,6 +31,7 @@ import (
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-playground/validator/v10"
 	httpSwagger "github.com/swaggo/http-swagger"
+	"golang.org/x/sync/errgroup"
 )
 
 // @title           Auth Service API
@@ -60,7 +62,6 @@ func main() {
 		log.Error("failed to connect postgres", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
-	defer storage.Close()
 
 	log.Info("postgresql connected successfully",
 		slog.String("host", cfg.Postgres.Host),
@@ -73,7 +74,6 @@ func main() {
 		log.Error("failed to connect rabbitmq", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
-	defer rabbitMQClient.Close()
 
 	log.Info("rabbitmq connected successfully")
 
@@ -123,8 +123,6 @@ func main() {
 	case sig := <-shutdown:
 		log.Info("shutdown signal received", slog.String("signal", sig.String()))
 
-		cancel()
-
 		// * Graceful shutdown context
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer shutdownCancel()
@@ -137,6 +135,29 @@ func main() {
 			if closeErr := srv.Close(); closeErr != nil {
 				log.Error("failed to force close server", slog.String("error", closeErr.Error()))
 			}
+		}
+
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer closeCancel()
+
+		var eg errgroup.Group
+
+		eg.Go(func() error {
+			if err := storage.Close(closeCtx); err != nil {
+				return fmt.Errorf("postgres close: %w", err)
+			}
+			return nil
+		})
+
+		eg.Go(func() error {
+			if err := rabbitMQClient.Close(closeCtx); err != nil {
+				return fmt.Errorf("rabbitmq close: %w", err)
+			}
+			return nil
+		})
+
+		if err := eg.Wait(); err != nil {
+			log.Error("failed to close resources gracefully", slog.String("err", err.Error()))
 		}
 
 		log.Info("server stopped gracefully")
@@ -247,6 +268,10 @@ func setupLogger(env string) *slog.Logger {
 	case envProd:
 		log = slog.New(
 			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		)
+	default:
+		log = slog.New(
+			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
 		)
 	}
 

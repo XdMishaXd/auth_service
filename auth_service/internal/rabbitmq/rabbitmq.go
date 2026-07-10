@@ -1,11 +1,13 @@
 package rabbitmq
 
 import (
-	"auth_service/internal/models"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
+
+	"auth_service/internal/models"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -69,7 +71,24 @@ func (r *RabbitMQClient) SendMessage(ctx context.Context, msg models.Message) er
 	)
 }
 
-func (r *RabbitMQClient) Close() {
-	_ = r.channel.Close()
-	_ = r.conn.Close()
+func (r *RabbitMQClient) Close(ctx context.Context) error {
+	done := make(chan error, 1)
+
+	go func() {
+		var errs []error
+		if err := r.channel.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("channel close: %w", err))
+		}
+		if err := r.conn.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("conn close: %w", err))
+		}
+		done <- errors.Join(errs...)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("rabbitmq close timed out: %w", ctx.Err())
+	}
 }

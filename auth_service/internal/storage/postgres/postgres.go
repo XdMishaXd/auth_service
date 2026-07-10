@@ -605,8 +605,21 @@ func (r *PostgresRepo) CleanupExpiredMagicLinks(ctx context.Context) (int, error
 	return deleted, nil
 }
 
-func (r *PostgresRepo) Close() {
-	r.pool.Close()
+func (r *PostgresRepo) Close(ctx context.Context) error {
+	done := make(chan struct{})
+
+	go func() {
+		r.pool.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		r.log.Error("postgres pool close timed out, connections may leak")
+		return ctx.Err()
+	}
 }
 
 // * dsn формирует конфигурацию базы данных.

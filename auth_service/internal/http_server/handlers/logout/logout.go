@@ -17,7 +17,7 @@ import (
 )
 
 type Request struct {
-	RefreshToken string `json:"refresh_token" validate:"required"`
+	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format"`
 }
 
 type Response struct {
@@ -84,15 +84,21 @@ func New(
 
 		log.Info("Request body decoded")
 
-		var validateErr validator.ValidationErrors
+		if err = validate.Struct(req); err != nil {
+			var validateErr validator.ValidationErrors
 
-		if errors.As(err, &validateErr) {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.ValidationError(validateErr))
-		} else {
+			if errors.As(err, &validateErr) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, resp.ValidationError(validateErr))
+
+				return
+			}
+
 			log.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
+
+			return
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
