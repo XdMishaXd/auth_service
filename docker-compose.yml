@@ -15,21 +15,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-  # redis:
-  #   image: redis:latest
-  #   container_name: auth_service_cache
-  #   restart: always
-  #   ports:
-  #     - "6379:6379"
-  #   command: ["redis-server", "--appendonly", "yes"]
-  #   volumes:
-  #     - redis_data:/data
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "-a", "password", "ping"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 5
-  #     start_period: 15s
+  redis:
+    image: redis:latest
+    container_name: auth_service_cache
+    restart: always
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
@@ -56,6 +56,8 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./auth_service/config:/app/config

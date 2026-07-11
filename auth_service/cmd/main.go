@@ -22,10 +22,12 @@ import (
 	resendEmail "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
 	customValidator "auth_service/internal/lib/custom_validator"
-	rateLimit "auth_service/internal/middleware/ratelimit"
+	httpRateLimit "auth_service/internal/middleware/rate_limiter"
 	swaggerAuth "auth_service/internal/middleware/swagger-auth"
 	"auth_service/internal/rabbitmq"
+	rateLimit "auth_service/internal/ratelimit"
 	"auth_service/internal/storage/postgres"
+	"auth_service/internal/storage/redis"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -57,7 +59,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	storage, err := postgres.New(ctx, cfg, log)
+	postgresql, err := postgres.New(ctx, cfg, log)
 	if err != nil {
 		log.Error("failed to connect postgres", slog.String("err", err.Error()))
 		os.Exit(1)
@@ -69,6 +71,17 @@ func main() {
 		slog.String("database", cfg.Postgres.DBName),
 	)
 
+	redis, err := redis.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.Db)
+	if err != nil {
+		log.Error("failed to connect redis", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	log.Info("redis connected successfully",
+		slog.String("host", cfg.Redis.Addr),
+		slog.Int("database", cfg.Redis.Db),
+	)
+
 	rabbitMQClient, err := rabbitmq.New(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName)
 	if err != nil {
 		log.Error("failed to connect rabbitmq", slog.String("err", err.Error()))
@@ -77,11 +90,19 @@ func main() {
 
 	log.Info("rabbitmq connected successfully")
 
+	limiter, err := rateLimit.New(ctx, redis)
+	if err != nil {
+		log.Error("failed to init rate limiter", slog.String("err", err.Error()))
+		os.Exit(1)
+	}
+
+	rlMiddlewares := httpRateLimit.New(limiter, log)
+
 	authMiddleware := auth.New(
 		log,
-		storage,
-		storage,
-		storage,
+		postgresql,
+		postgresql,
+		postgresql,
 		cfg.Tokens.AccessTokenTTL,
 		cfg.Tokens.RefreshTokenTTL,
 		cfg.Tokens.ResetTokenTTL,
@@ -93,6 +114,7 @@ func main() {
 		log,
 		cfg,
 		requestValidator,
+		rlMiddlewares,
 		authMiddleware,
 		rabbitMQClient,
 	)
@@ -143,7 +165,7 @@ func main() {
 		var eg errgroup.Group
 
 		eg.Go(func() error {
-			if err := storage.Close(closeCtx); err != nil {
+			if err := postgresql.Close(closeCtx); err != nil {
 				return fmt.Errorf("postgres close: %w", err)
 			}
 			return nil
@@ -153,6 +175,14 @@ func main() {
 			if err := rabbitMQClient.Close(closeCtx); err != nil {
 				return fmt.Errorf("rabbitmq close: %w", err)
 			}
+			return nil
+		})
+
+		eg.Go(func() error {
+			if err := redis.Close(closeCtx); err != nil {
+				return fmt.Errorf("redis close: %w", err)
+			}
+
 			return nil
 		})
 
@@ -168,11 +198,13 @@ func setupRouter(
 	log *slog.Logger,
 	cfg *config.Config,
 	validate *validator.Validate,
+	rateLimiter *httpRateLimit.RateLimit,
 	authService *auth.Auth,
 	msgBroker *rabbitmq.RabbitMQClient,
 ) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
@@ -187,7 +219,7 @@ func setupRouter(
 	}
 
 	r.Route("/auth", func(r chi.Router) {
-		r.With(rateLimit.Register()).Post("/register",
+		r.With(rateLimiter.Register()).Post("/register",
 			register.New(
 				log,
 				validate,
@@ -199,16 +231,16 @@ func setupRouter(
 				cfg.HTTPServer.HandlersTimeout,
 			),
 		)
-		r.With(rateLimit.Login()).Post("/login",
+		r.With(rateLimiter.Login()).Post("/login",
 			login.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
-		r.With(rateLimit.Refresh()).Post("/refresh",
+		r.With(rateLimiter.Refresh()).Post("/refresh",
 			refresh.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
-		r.With(rateLimit.Logout()).Post("/logout",
+		r.With(rateLimiter.Logout()).Post("/logout",
 			logout.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 		)
-		r.With(rateLimit.Verify()).Get("/verify",
+		r.With(rateLimiter.Verify()).Get("/verify",
 			verify.New(
 				log,
 				authService,
@@ -216,7 +248,7 @@ func setupRouter(
 				cfg.HTTPServer.HandlersTimeout,
 			),
 		)
-		r.With(rateLimit.ResendVerificationEmail()).Post("/verify/resend",
+		r.With(rateLimiter.ResendVerificationEmail()).Post("/verify/resend",
 			resendEmail.New(
 				log,
 				validate,
@@ -229,7 +261,7 @@ func setupRouter(
 			),
 		)
 
-		r.With(rateLimit.ForgotPassword()).Post("/password/forgot",
+		r.With(rateLimiter.ForgotPassword()).Post("/password/forgot",
 			forgot.New(
 				log,
 				validate,
@@ -240,7 +272,7 @@ func setupRouter(
 			),
 		)
 
-		r.With(rateLimit.ResetPassword()).Post("/password/reset",
+		r.With(rateLimiter.ResetPassword()).Post("/password/reset",
 			reset.New(
 				log,
 				validate,
