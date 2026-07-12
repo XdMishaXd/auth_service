@@ -14,6 +14,15 @@ type User struct {
 	IsVerified bool
 }
 
+type OAuthAccount struct {
+	ID             int64
+	UserID         int64
+	Provider       string
+	ProviderUserID string
+	Email          string
+	CreatedAt      time.Time
+}
+
 type App struct {
 	ID     int32
 	Name   string
@@ -60,7 +69,7 @@ type MagicLink struct {
 	ID        int64      `json:"id"`
 	UserID    int64      `json:"user_id"`
 	AppID     int32      `json:"app_id"`
-	TokenHash string     `json:"token_hash"`
+	TokenHash string     `json:"token_hash"` // ! token hash дожен быть []byte
 	SessionID string     `json:"session_id"`
 	IPAddress string     `json:"ip_address"`
 	UserAgent string     `json:"user_agent"`

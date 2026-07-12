@@ -46,7 +46,6 @@ func (rl *RateLimit) Logout() func(http.Handler) http.Handler {
 	return rl.byIP("logout", rateLimit.Policy{Burst: 10, Rate: 30, Period: time.Minute})
 }
 
-// Verify: GET, токен в query — email недоступен без парсинга тела (его нет).
 func (rl *RateLimit) Verify() func(http.Handler) http.Handler {
 	return rl.byIP("verify", rateLimit.Policy{Burst: 10, Rate: 30, Period: time.Minute})
 }
@@ -59,7 +58,7 @@ func (rl *RateLimit) ResendVerificationEmail() func(http.Handler) http.Handler {
 
 func (rl *RateLimit) ForgotPassword() func(http.Handler) http.Handler {
 	ip := rl.byIP("forgot_password", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
-	email := rl.byEmail("forgot_password", rateLimit.Policy{Burst: 1, Rate: 3, Period: time.Hour})
+	email := rl.byEmail("forgot_password", rateLimit.Policy{Burst: 2, Rate: 3, Period: time.Hour})
 	return chain(parseEmail.New, ip, email)
 }
 

@@ -5,7 +5,7 @@ CREATE TABLE magic_links (
 	id BIGSERIAL PRIMARY KEY,
 	user_id BIGINT NOT NULL,
 	app_id INTEGER NOT NULL,
-	token_hash VARCHAR(64) NOT NULL UNIQUE,
+	token_hash BYTEA NOT NULL UNIQUE,
 	session_id VARCHAR(64) NOT NULL,
 	ip_address INET,
 	user_agent TEXT,

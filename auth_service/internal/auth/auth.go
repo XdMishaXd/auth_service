@@ -32,13 +32,14 @@ var (
 )
 
 type Auth struct {
-	log         *slog.Logger
-	usrSaver    UserSaver
-	usrProvider UserProvider
-	appProvider AppProvider
-	tokenTTL    time.Duration
-	refreshTTL  time.Duration
-	resetTTL    time.Duration
+	Log         *slog.Logger
+	UsrSaver    UserSaver
+	UsrProvider UserProvider
+	AppProvider AppProvider
+
+	tokenTTL   time.Duration
+	refreshTTL time.Duration
+	resetTTL   time.Duration
 }
 
 type UserSaver interface {
@@ -78,10 +79,10 @@ func New(
 	jwtTTL, refreshTTL, resetTTL time.Duration,
 ) *Auth {
 	return &Auth{
-		usrSaver:    userSaver,
-		usrProvider: userProvider,
-		appProvider: appProvider,
-		log:         log,
+		UsrSaver:    userSaver,
+		UsrProvider: userProvider,
+		AppProvider: appProvider,
+		Log:         log,
 		tokenTTL:    jwtTTL,
 		refreshTTL:  refreshTTL,
 		resetTTL:    resetTTL,
@@ -96,9 +97,9 @@ func (a *Auth) Login(
 ) (accessToken string, refreshToken string, err error) {
 	const op = "Auth.Login"
 
-	log := a.log.With(slog.String("op", op))
+	log := a.Log.With(slog.String("op", op))
 
-	user, err := a.usrProvider.User(ctx, email)
+	user, err := a.UsrProvider.User(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found")
@@ -118,37 +119,12 @@ func (a *Auth) Login(
 		return "", "", ErrInvalidCredentials
 	}
 
-	app, err := a.appProvider.App(ctx, appID)
+	app, err := a.AppProvider.App(ctx, appID)
 	if err != nil {
 		return "", "", ErrInvalidAppID
 	}
 
-	accessToken, err = jwt.NewToken(*user, *app, a.tokenTTL)
-	if err != nil {
-		log.Error("failed to generate access token", sl.Err(err))
-		return "", "", err
-	}
-
-	tokenID, refreshToken, hash, err := tokens.NewRefreshToken("")
-	if err != nil {
-		log.Error("failed to generate refresh token", sl.Err(err))
-		return "", "", err
-	}
-
-	err = a.usrSaver.SaveRefreshToken(
-		ctx,
-		tokenID,
-		user.ID,
-		appID,
-		hash,
-		time.Now().Add(a.refreshTTL),
-	)
-	if err != nil {
-		log.Error("failed to save refresh token", sl.Err(err))
-		return "", "", err
-	}
-
-	return accessToken, refreshToken, nil
+	return a.IssueTokens(ctx, user, app)
 }
 
 func (a *Auth) RegisterNewUser(
@@ -159,7 +135,7 @@ func (a *Auth) RegisterNewUser(
 ) (int64, error) {
 	const op = "auth.registerNewUser"
 
-	log := a.log.With(
+	log := a.Log.With(
 		slog.String("op", op),
 	)
 
@@ -171,7 +147,7 @@ func (a *Auth) RegisterNewUser(
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	id, err := a.usrSaver.SaveUser(ctx, email, username, passHash)
+	id, err := a.UsrSaver.SaveUser(ctx, email, username, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserAlreadyExists) {
 			log.Warn("User already exists")
@@ -193,11 +169,11 @@ func (a *Auth) CheckUserVerification(
 ) (int64, bool, error) {
 	const op = "auth.CheckUserVerification"
 
-	log := a.log.With(
+	log := a.Log.With(
 		slog.String("op", op),
 	)
 
-	userID, isVerified, err := a.usrProvider.CheckIfUserVerified(ctx, email)
+	userID, isVerified, err := a.UsrProvider.CheckIfUserVerified(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			return 0, false, storage.ErrUserNotFound
@@ -217,7 +193,7 @@ func (a *Auth) Refresh(
 ) (string, string, error) {
 	const op = "auth.refresh"
 
-	log := a.log.With(
+	log := a.Log.With(
 		slog.String("op", op),
 	)
 
@@ -230,7 +206,12 @@ func (a *Auth) Refresh(
 	tokenID := parts[0]
 	secret := parts[1]
 
-	rt, err := a.usrProvider.RefreshTokenByID(ctx, uuid.MustParse(tokenID))
+	uid, err := uuid.Parse(tokenID)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+	}
+
+	rt, err := a.UsrProvider.RefreshTokenByID(ctx, uid)
 	if err != nil {
 		log.Warn("refresh token not found", sl.Err(err))
 		return "", "", ErrInvalidCredentials
@@ -245,13 +226,13 @@ func (a *Auth) Refresh(
 		return "", "", ErrInvalidCredentials
 	}
 
-	user, err := a.usrProvider.UserByID(ctx, rt.UserID)
+	user, err := a.UsrProvider.UserByID(ctx, rt.UserID)
 	if err != nil {
 		log.Error("failed to load user", sl.Err(err))
 		return "", "", ErrInvalidCredentials
 	}
 
-	app, err := a.appProvider.App(ctx, rt.AppID)
+	app, err := a.AppProvider.App(ctx, rt.AppID)
 	if err != nil {
 		return "", "", ErrInvalidAppID
 	}
@@ -268,7 +249,7 @@ func (a *Auth) Refresh(
 		return "", "", err
 	}
 
-	err = a.usrSaver.UpdateRefreshToken(
+	err = a.UsrSaver.UpdateRefreshToken(
 		ctx,
 		rt.ID,
 		newHash,
@@ -290,7 +271,7 @@ func (a *Auth) VerifyUser(
 ) error {
 	const op = "auth.VerifyUser"
 
-	log := a.log.With(
+	log := a.Log.With(
 		slog.String("op", op),
 	)
 
@@ -301,7 +282,7 @@ func (a *Auth) VerifyUser(
 		return err
 	}
 
-	if err = a.usrProvider.SetEmailVerified(ctx, user_id); err != nil {
+	if err = a.UsrProvider.SetEmailVerified(ctx, user_id); err != nil {
 		log.Error("failed to update update status in database", sl.Err(err))
 
 		return err
@@ -314,6 +295,8 @@ func (a *Auth) Logout(
 	ctx context.Context,
 	rawRefreshToken string,
 ) error {
+	const op = "auth.logout"
+
 	parts := strings.Split(rawRefreshToken, ".")
 	if len(parts) != 2 {
 		return ErrInvalidCredentials
@@ -322,7 +305,12 @@ func (a *Auth) Logout(
 	tokenID := parts[0]
 	secret := parts[1]
 
-	rt, err := a.usrProvider.RefreshTokenByID(ctx, uuid.MustParse(tokenID))
+	uid, err := uuid.Parse(tokenID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
+	}
+
+	rt, err := a.UsrProvider.RefreshTokenByID(ctx, uid)
 	if err != nil {
 		return ErrInvalidCredentials
 	}
@@ -331,7 +319,7 @@ func (a *Auth) Logout(
 		return ErrInvalidCredentials
 	}
 
-	err = a.usrSaver.DeleteRefreshToken(ctx, rt.ID)
+	err = a.UsrSaver.DeleteRefreshToken(ctx, rt.ID)
 	if err != nil {
 		return err
 	}
@@ -342,16 +330,16 @@ func (a *Auth) Logout(
 func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 	const op = "auth.ForgotPass"
 
-	log := a.log.With(
+	log := a.Log.With(
 		slog.String("op", op),
 	)
 
-	uid, err := a.usrProvider.UserByEmail(ctx, email)
+	uid, err := a.UsrProvider.UserByEmail(ctx, email)
 	if err != nil {
 		return "", err
 	}
 
-	err = a.usrSaver.DeleteAllResetTokens(ctx, uid)
+	err = a.UsrSaver.DeleteAllResetTokens(ctx, uid)
 	if err != nil {
 		log.Error("Failed to delete reset tokens", sl.Err(err))
 
@@ -365,7 +353,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 		return "", err
 	}
 
-	err = a.usrSaver.SaveResetToken(
+	err = a.UsrSaver.SaveResetToken(
 		ctx,
 		uuid.MustParse(tokenID),
 		uid,
@@ -388,7 +376,7 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
-	rt, err := a.usrProvider.ResetTokenByID(ctx, uid)
+	rt, err := a.UsrProvider.ResetTokenByID(ctx, uid)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -403,7 +391,7 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 		return ErrInvalidCredentials
 	}
 
-	user, err := a.usrProvider.UserByID(ctx, rt.UserID)
+	user, err := a.UsrProvider.UserByID(ctx, rt.UserID)
 	if err != nil {
 		return fmt.Errorf("%s: get user: %w", op, err)
 	}
@@ -417,9 +405,31 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	if err := a.usrProvider.ResetPassword(ctx, rt.UserID, rt.ID, passHash); err != nil {
+	if err := a.UsrProvider.ResetPassword(ctx, rt.UserID, rt.ID, passHash); err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
+}
+
+// issueTokens генерирует access и refresh токены и сохраняет refresh в БД.
+func (a *Auth) IssueTokens(ctx context.Context, user *models.User, app *models.App) (accessToken, refreshToken string, err error) {
+	accessToken, err = jwt.NewToken(*user, *app, a.tokenTTL)
+	if err != nil {
+		a.Log.Error("failed to generate access token", sl.Err(err))
+		return "", "", err
+	}
+
+	tokenID, refreshToken, hash, err := tokens.NewRefreshToken("")
+	if err != nil {
+		a.Log.Error("failed to generate refresh token", sl.Err(err))
+		return "", "", err
+	}
+
+	if err := a.UsrSaver.SaveRefreshToken(ctx, tokenID, user.ID, app.ID, hash, time.Now().Add(a.refreshTTL)); err != nil {
+		a.Log.Error("failed to save refresh token", sl.Err(err))
+		return "", "", err
+	}
+
+	return accessToken, refreshToken, nil
 }

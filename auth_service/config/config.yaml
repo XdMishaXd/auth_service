@@ -17,6 +17,9 @@ two_factor_auth:
   token_secret: "123"
   redirect_url: "http://localhost:8082"
 
+oauth:
+  state_ttl: 5m
+
 http_server:
   address: ":8082"
   timeout: 4s

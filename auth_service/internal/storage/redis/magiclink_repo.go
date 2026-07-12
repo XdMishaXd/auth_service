@@ -4,65 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"auth_service/internal/storage"
-
-	"github.com/redis/go-redis/v9"
 )
-
-type RedisRepo struct {
-	client *redis.Client
-}
-
-func New(ctx context.Context, addr, pass string, db int) (*RedisRepo, error) {
-	const op = "storage.redis.New"
-
-	client := redis.NewClient(
-		&redis.Options{
-			Addr:         addr,
-			Password:     pass,
-			DB:           db,
-			MaxRetries:   3,
-			DialTimeout:  5 * time.Second,
-			ReadTimeout:  3 * time.Second,
-			WriteTimeout: 3 * time.Second,
-			PoolSize:     10,
-			MinIdleConns: 2,
-		})
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	return &RedisRepo{
-		client: client,
-	}, nil
-}
-
-// RegisterAtomicOp регистрирует атомарную операцию (Lua-скрипт) в Redis
-// и возвращает её идентификатор для последующих вызовов через ExecuteAtomicOp.
-func (r *RedisRepo) RegisterAtomicOp(ctx context.Context) (string, error) {
-	const op = "storage.redis.RegisterAtomicOp"
-
-	sha, err := r.client.ScriptLoad(ctx, storage.GCRAScript).Result()
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", op, err)
-	}
-
-	return sha, nil
-}
-
-// ExecuteAtomicOp выполняет ранее зарегистрированную атомарную операцию по её id.
-func (r *RedisRepo) ExecuteAtomicOp(ctx context.Context, opID string, keys []string, args ...interface{}) (interface{}, error) {
-	const op = "storage.redis.ExecuteAtomicOp"
-
-	res, err := r.client.EvalSha(ctx, opID, keys, args...).Result()
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	return res, nil
-}
 
 // SetMagicLinkPending сохраняет информацию о созданном токене.
 // Используется как anti-replay слой поверх Postgres (источника истины).
@@ -161,26 +103,6 @@ func (r *RedisRepo) InvalidateMagicLinksByHashes(ctx context.Context, tokenHashe
 	}
 
 	return nil
-}
-
-// Close закрывает соединение с Redis.
-func (r *RedisRepo) Close(ctx context.Context) error {
-	const op = "storage.redis.Close"
-
-	done := make(chan error, 1)
-	go func() {
-		done <- r.client.Close()
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			return fmt.Errorf("%s: %w", op, err)
-		}
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("%s: %w", op, ctx.Err())
-	}
 }
 
 func pendingKey(tokenHash string) string {

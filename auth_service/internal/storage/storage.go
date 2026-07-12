@@ -3,13 +3,23 @@ package storage
 import "errors"
 
 var (
-	ErrUserAlreadyExists    = errors.New("user already exists")
-	ErrUserNotFound         = errors.New("user not found")
-	ErrAppNotFound          = errors.New("app not found")
+	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrUserNotFound      = errors.New("user not found")
+
+	ErrAppNotFound = errors.New("app not found")
+
 	ErrRefreshTokenNotFound = errors.New("refresh token not found")
 	ErrRefreshTokenConflict = errors.New("refresh token has already been rotated")
-	ErrResetTokenNotFound   = errors.New("reset token not found")
-	ErrResetTokenUsed       = errors.New("reset token already used")
+
+	ErrResetTokenNotFound = errors.New("reset token not found")
+	ErrResetTokenUsed     = errors.New("reset token already used")
+
+	ErrOAuthAccountNotFound       = errors.New("oauth account not found")
+	ErrOAuthAccountAlreadyLinked  = errors.New("oauth account already linked to another user")
+	ErrOAuthProviderAlreadyLinked = errors.New("user already has this provider linked")
+	ErrOAuthStateNotFound         = errors.New("oauth state not found or expired")
+
+	ErrMagicLinkNotFound = errors.New("magic link not found")
 )
 
 // gcraScript реализует GCRA (Generic Cell Rate Algorithm) одним атомарным
