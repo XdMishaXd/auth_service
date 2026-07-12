@@ -16,6 +16,7 @@ type Config struct {
 	HTTPServer    `yaml:"http_server"`
 	TwoFactorAuth `yaml:"two_factor_auth"`
 	Swagger       `yaml:"swagger"`
+	OAuth         `yaml:"oauth"`
 }
 
 type Swagger struct {
@@ -29,6 +30,12 @@ type HTTPServer struct {
 	Timeout         time.Duration `yaml:"timeout" env-default:"4s"`
 	IdleTimeout     time.Duration `yaml:"idle_timeout" env-default:"60s"`
 	HandlersTimeout time.Duration `yaml:"handlers_timeout" env-default:"5s"`
+}
+
+type OAuth struct {
+	StateTTL             time.Duration   `yaml:"state_ttl" env-default:"5m"`
+	HandlersTimeout      time.Duration   `yaml:"handlers_timeout" env-default:"10s"`
+	AllowedRedirectHosts map[string]bool `yaml:"allowed_redirect_hosts" env-required:"true"`
 }
 
 type TwoFactorAuth struct {

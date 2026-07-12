@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	parseEmail "auth_service/internal/middleware/parse_email"
+	emailParser "auth_service/internal/http_server/middleware/email_parser"
 	rateLimit "auth_service/internal/ratelimit"
 )
 
@@ -35,7 +35,7 @@ func (rl *RateLimit) Register() func(http.Handler) http.Handler {
 func (rl *RateLimit) Login() func(http.Handler) http.Handler {
 	ip := rl.byIP("login", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Minute})
 	email := rl.byEmail("login", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Minute})
-	return chain(parseEmail.New, ip, email)
+	return chain(emailParser.New, ip, email)
 }
 
 func (rl *RateLimit) Refresh() func(http.Handler) http.Handler {
@@ -53,13 +53,13 @@ func (rl *RateLimit) Verify() func(http.Handler) http.Handler {
 func (rl *RateLimit) ResendVerificationEmail() func(http.Handler) http.Handler {
 	ip := rl.byIP("verify_resend", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("verify_resend", rateLimit.Policy{Burst: 1, Rate: 3, Period: time.Hour})
-	return chain(parseEmail.New, ip, email)
+	return chain(emailParser.New, ip, email)
 }
 
 func (rl *RateLimit) ForgotPassword() func(http.Handler) http.Handler {
 	ip := rl.byIP("forgot_password", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("forgot_password", rateLimit.Policy{Burst: 2, Rate: 3, Period: time.Hour})
-	return chain(parseEmail.New, ip, email)
+	return chain(emailParser.New, ip, email)
 }
 
 func (rl *RateLimit) ResetPassword() func(http.Handler) http.Handler {
@@ -74,7 +74,7 @@ func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Ha
 
 func (rl *RateLimit) byEmail(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
-		return "email", parseEmail.FromContext(r.Context())
+		return "email", emailParser.FromContext(r.Context())
 	}, FailClosed)
 }
 

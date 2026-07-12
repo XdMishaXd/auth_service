@@ -1,4 +1,4 @@
-package parseEmail
+package emailParser
 
 import (
 	"bytes"

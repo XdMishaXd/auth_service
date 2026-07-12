@@ -19,6 +19,9 @@ two_factor_auth:
 
 oauth:
   state_ttl: 5m
+  handlers_timeout: 10s
+  allowed_redirect_hosts:
+    - locahost
 
 http_server:
   address: ":8082"
