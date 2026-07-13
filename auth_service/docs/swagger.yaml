@@ -7,6 +7,46 @@ definitions:
       status:
         type: string
     type: object
+  internal_http_server_handlers_oauth_accounts.Account:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      provider:
+        type: string
+    type: object
+  internal_http_server_handlers_oauth_accounts.Response:
+    properties:
+      accounts:
+        items:
+          $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Account'
+        type: array
+      error:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_http_server_handlers_oauth_callback.Response:
+    properties:
+      access_token:
+        type: string
+      error:
+        type: string
+      refresh_token:
+        type: string
+      status:
+        type: string
+    type: object
+  internal_http_server_handlers_oauth_link.Response:
+    properties:
+      error:
+        type: string
+      redirect_url:
+        type: string
+      status:
+        type: string
+    type: object
 host: localhost:8082
 info:
   contact: {}
@@ -202,6 +242,330 @@ paths:
       tags:
       - auth
       x-order: 4
+  /auth/oauth/{provider}/callback:
+    get:
+      description: |-
+        Handles the redirect from the OAuth provider after user consent.
+        Validates state against the stored value (login or link flow),
+        exchanges the authorization code for tokens, and either issues
+        a new access/refresh token pair (login) or links the provider
+        to the existing account (link), depending on how state was created.
+      parameters:
+      - description: OAuth provider name (e.g. google, github)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: Authorization code issued by the provider
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: Opaque state token, must match value issued in /login or /link
+        in: query
+        name: state
+        required: true
+        type: string
+      - description: Error code returned by provider if user denied access
+        in: query
+        name: error
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Пара access/refresh токенов"  example({"status": "ok", "access_token":
+            "eyJ...", "refresh_token": "eyJ..."})'
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_oauth_callback.Response'
+        "400":
+          description: 'Пользователь отклонил доступ, отсутствуют code/state, невалидный
+            app_id или state истёк/невалиден"  example({"status": "error", "error":
+            "invalid or expired oauth state"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "403":
+          description: 'Email не подтверждён провайдером"  example({"status": "error",
+            "error": "email not verified by provider"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
+            "unknown oauth provider"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "409":
+          description: 'Конфликт: аккаунт с таким email уже существует, либо provider
+            уже привязан"  example({"status": "error", "error": "account with this
+            email already exists, log in and link instead"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: OAuth provider callback
+      tags:
+      - oauth
+  /auth/oauth/{provider}/link:
+    get:
+      description: |-
+        Starts OAuth2 flow to link a third-party provider to the
+        currently authenticated user's account. Requires a valid
+        access token; user_id is taken from claims, not request body,
+        so the link is always bound to the authenticated session.
+      parameters:
+      - description: OAuth provider name (e.g. google, github)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: Callback URL after auth, must match allowed hosts
+        example: '"https://app.example.com/callback"'
+        in: query
+        name: redirect_uri
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Ссылка для перехода к провайдеру"  example({"status": "ok",
+            "redirect_url": "https://accounts.google.com/o/oauth2/..."})'
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_oauth_link.Response'
+        "400":
+          description: 'Невалидный redirect_uri или app_id"  example({"status": "error",
+            "error": "invalid app id"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
+            "unknown oauth provider"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Link OAuth provider to existing account
+      tags:
+      - oauth
+  /auth/oauth/{provider}/login:
+    get:
+      description: |-
+        Starts the OAuth2 authorization flow for the given provider.
+        Validates app_id and redirect_uri against the allowed hosts
+        whitelist, then redirects the client to the provider's
+        authorization URL (state is generated and tracked server-side).
+      parameters:
+      - description: OAuth provider name (e.g. google, github)
+        in: path
+        name: provider
+        required: true
+        type: string
+      - description: ID приложения-клиента
+        example: 1
+        in: query
+        name: app_id
+        required: true
+        type: integer
+      - description: Callback URL after auth, must match allowed hosts
+        example: '"https://app.example.com/callback"'
+        in: query
+        name: redirect_uri
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Redirect to provider's OAuth consent screen
+        "400":
+          description: 'Невалидный app_id или redirect_uri не прошёл валидацию"  example({"status":
+            "error", "error": "redirect_uri host not allowed"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
+            "oauth provider not found"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка при формировании authorization URL"  example({"status":
+            "error", "error": "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Initiate OAuth login
+      tags:
+      - oauth
+  /auth/oauth/{provider}/unlink:
+    delete:
+      description: |-
+        Removes the link between the given OAuth provider and the
+        currently authenticated user. Fails if this is the user's
+        last remaining authentication method, to prevent account lockout.
+      parameters:
+      - description: OAuth provider name (e.g. google, github)
+        in: path
+        name: provider
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Провайдер успешно отвязан
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "403":
+          description: 'Нельзя отвязать последний метод аутентификации"  example({"status":
+            "error", "error": "cannot unlink last authentication method"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'OAuth-аккаунт с таким provider не найден у пользователя"  example({"status":
+            "error", "error": "oauth account not found"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unlink OAuth provider from account
+      tags:
+      - oauth
+  /auth/oauth/accounts:
+    get:
+      description: |-
+        Returns all third-party OAuth providers linked to the
+        currently authenticated user's account.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Список привязанных аккаунтов"  example({"status": "ok", "accounts":
+            [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})'
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Response'
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List linked OAuth accounts
+      tags:
+      - oauth
   /auth/password/forgot:
     post:
       consumes:

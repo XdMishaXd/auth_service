@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	emailParser "auth_service/internal/http_server/middleware/email_parser"
 	rateLimit "auth_service/internal/ratelimit"
 )
@@ -66,6 +67,22 @@ func (rl *RateLimit) ResetPassword() func(http.Handler) http.Handler {
 	return rl.byIP("password_reset", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 }
 
+func (rl *RateLimit) OAuthLogin() func(http.Handler) http.Handler {
+	return rl.byIP("oauth_login", rateLimit.Policy{Burst: 10, Rate: 30, Period: time.Minute})
+}
+
+func (rl *RateLimit) OAuthCallback() func(http.Handler) http.Handler {
+	return rl.byIP("oauth_callback", rateLimit.Policy{Burst: 5, Rate: 15, Period: time.Minute})
+}
+
+func (rl *RateLimit) OAuthLink() func(http.Handler) http.Handler {
+	return rl.byUserID("oauth_link", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
+func (rl *RateLimit) OAuthUnlink() func(http.Handler) http.Handler {
+	return rl.byUserID("oauth_unlink", rateLimit.Policy{Burst: 5, Rate: 15, Period: time.Hour})
+}
+
 func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
 		return "ip", stripPort(r.RemoteAddr) // RealIP уже подменил RemoteAddr выше по цепочке
@@ -75,6 +92,16 @@ func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Ha
 func (rl *RateLimit) byEmail(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
 		return "email", emailParser.FromContext(r.Context())
+	}, FailClosed)
+}
+
+func (rl *RateLimit) byUserID(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
+	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
+		claims, ok := claimsParser.ClaimsFromContext(r.Context())
+		if !ok {
+			return "userid", ""
+		}
+		return "userid", strconv.FormatInt(claims.UserID, 10)
 	}, FailClosed)
 }
 

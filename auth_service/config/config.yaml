@@ -19,9 +19,21 @@ two_factor_auth:
 
 oauth:
   state_ttl: 5m
+
   handlers_timeout: 10s
+
   allowed_redirect_hosts:
-    - locahost
+    - localhost
+
+  google:
+    client_id:
+    client_secret:
+    redirect_url: "http://localhost:8082/auth/oauth/google/callback"
+
+  github:
+    client_id:
+    client_secret:
+    redirect_url: "http://localhost:8082/auth/oauth/github/callback"
 
 http_server:
   address: ":8082"

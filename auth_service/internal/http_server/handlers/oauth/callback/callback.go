@@ -24,6 +24,26 @@ type Response struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// New godoc
+// @Summary      OAuth provider callback
+// @Description  Handles the redirect from the OAuth provider after user consent.
+// @Description  Validates state against the stored value (login or link flow),
+// @Description  exchanges the authorization code for tokens, and either issues
+// @Description  a new access/refresh token pair (login) or links the provider
+// @Description  to the existing account (link), depending on how state was created.
+// @Tags         oauth
+// @Produce      json
+// @Param        provider  path   string  true  "OAuth provider name (e.g. google, github)"
+// @Param        code      query  string  true  "Authorization code issued by the provider"
+// @Param        state     query  string  true  "Opaque state token, must match value issued in /login or /link"
+// @Param        error     query  string  false "Error code returned by provider if user denied access"
+// @Success      200  {object}  Response  "Пара access/refresh токенов"  example({"status": "ok", "access_token": "eyJ...", "refresh_token": "eyJ..."})
+// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отклонил доступ, отсутствуют code/state, невалидный app_id или state истёк/невалиден"  example({"status": "error", "error": "invalid or expired oauth state"})
+// @Failure      403  {object}  object{status=string,error=string}  "Email не подтверждён провайдером"  example({"status": "error", "error": "email not verified by provider"})
+// @Failure      404  {object}  object{status=string,error=string}  "Неизвестный OAuth provider"  example({"status": "error", "error": "unknown oauth provider"})
+// @Failure      409  {object}  object{status=string,error=string}  "Конфликт: аккаунт с таким email уже существует, либо provider уже привязан"  example({"status": "error", "error": "account with this email already exists, log in and link instead"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Router       /auth/oauth/{provider}/callback [get]
 func New(
 	log *slog.Logger,
 	authMiddleware *oauth.OAuthService,
@@ -56,7 +76,7 @@ func New(
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		accessToken, refreshToken, err := authMiddleware.Callback(ctx, providerName, code, state)
@@ -65,8 +85,10 @@ func New(
 			if status == http.StatusInternalServerError {
 				log.Error("oauth callback failed", sl.Err(err))
 			}
+
 			render.Status(r, status)
 			render.JSON(w, r, resp.Error(msg))
+
 			return
 		}
 

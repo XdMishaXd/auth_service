@@ -56,7 +56,7 @@ type OAuthStateStore interface {
 
 type OAuthStatePayload struct {
 	RedirectURI string `json:"redirect_uri"`
-	UserID      int64  `json:"user_id,omitempty"` // != 0 => linking flow, не login
+	UserID      int64  `json:"user_id,omitempty"`
 	AppID       int32  `json:"app_id"`
 }
 
@@ -72,7 +72,7 @@ type OAuthService struct {
 	stateTTL time.Duration
 }
 
-func NewOAuthService(
+func New(
 	base *auth.Auth,
 	log *slog.Logger,
 	accountRepo OAuthAccountRepo,
@@ -227,6 +227,28 @@ func (s *OAuthService) Callback(
 	}
 }
 
+// * Unlink отвязывает provider от юзера.
+func (s *OAuthService) Unlink(ctx context.Context, userID int64, providerName string) error {
+	const op = "OAuthService.Unlink"
+
+	if err := s.accountRepo.UnlinkOAuthAccount(ctx, userID, providerName); err != nil {
+		if errors.Is(err, storage.ErrOAuthLastAuthMethod) {
+			return ErrOAuthLastAuthMethod
+		}
+		if errors.Is(err, storage.ErrOAuthAccountNotFound) {
+			return err
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+// ListAccounts — привязанные провайдеры юзера, для профиля/настроек.
+func (s *OAuthService) ListAccounts(ctx context.Context, userID int64) ([]*models.OAuthAccount, error) {
+	return s.accountRepo.OAuthAccountsByUserID(ctx, userID)
+}
+
 func generateState() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -241,11 +263,6 @@ func (s *OAuthService) provider(name string) (OAuthProvider, error) {
 		return nil, ErrOAuthProviderNotFound
 	}
 	return p, nil
-}
-
-// ListAccounts — привязанные провайдеры юзера, для профиля/настроек.
-func (s *OAuthService) ListAccounts(ctx context.Context, userID int64) ([]*models.OAuthAccount, error) {
-	return s.accountRepo.OAuthAccountsByUserID(ctx, userID)
 }
 
 // deriveUsername — временный username из email-локали.

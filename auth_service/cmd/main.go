@@ -11,18 +11,27 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
+	"auth_service/internal/auth/oauth"
+	"auth_service/internal/auth/oauth/providers"
 	"auth_service/internal/config"
 	"auth_service/internal/http_server/handlers/health"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
+	"auth_service/internal/http_server/handlers/oauth/accounts"
+	"auth_service/internal/http_server/handlers/oauth/callback"
+	"auth_service/internal/http_server/handlers/oauth/link"
+	ologin "auth_service/internal/http_server/handlers/oauth/login"
+	"auth_service/internal/http_server/handlers/oauth/unlink"
 	"auth_service/internal/http_server/handlers/password/forgot"
 	"auth_service/internal/http_server/handlers/password/reset"
 	"auth_service/internal/http_server/handlers/refresh"
 	register "auth_service/internal/http_server/handlers/register"
 	resendEmail "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
+	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
 	swaggerAuth "auth_service/internal/http_server/middleware/swagger-auth"
+	"auth_service/internal/lib/jwt"
 	customValidator "auth_service/internal/lib/validation/custom_validator"
 	"auth_service/internal/rabbitmq"
 	rateLimit "auth_service/internal/ratelimit"
@@ -50,6 +59,23 @@ const (
 
 func main() {
 	cfg := config.MustLoad("./config/config.yaml")
+
+	googleProvider := providers.NewGoogleProvider(
+		cfg.OAuth.Google.ClientID,
+		cfg.OAuth.Google.ClientSecret,
+		cfg.OAuth.Google.RedirectURL,
+	)
+
+	githubProvider := providers.NewGitHubProvider(
+		cfg.OAuth.GitHub.ClientID,
+		cfg.OAuth.GitHub.ClientSecret,
+		cfg.OAuth.GitHub.RedirectURL,
+	)
+
+	oauthProviders := map[string]oauth.OAuthProvider{
+		"google": googleProvider,
+		"github": githubProvider,
+	}
 
 	log := setupLogger(cfg.Env)
 
@@ -98,7 +124,7 @@ func main() {
 
 	rlMiddlewares := httpRateLimit.New(limiter, log)
 
-	authMiddleware := auth.New(
+	authService := auth.New(
 		log,
 		postgresql,
 		postgresql,
@@ -108,6 +134,15 @@ func main() {
 		cfg.Tokens.ResetTokenTTL,
 	)
 
+	oauthService := oauth.New(
+		authService,
+		log,
+		postgresql,
+		redis,
+		oauthProviders,
+		cfg.OAuth.StateTTL,
+	)
+
 	requestValidator := customValidator.New()
 
 	router := setupRouter(
@@ -115,8 +150,11 @@ func main() {
 		cfg,
 		requestValidator,
 		rlMiddlewares,
-		authMiddleware,
+		authService,
+		oauthService,
+		postgresql,
 		rabbitMQClient,
+		allowedRedirectHostSet(cfg.OAuth.AllowedRedirectHosts),
 	)
 
 	srv := &http.Server{
@@ -200,7 +238,10 @@ func setupRouter(
 	validate *validator.Validate,
 	rateLimiter *httpRateLimit.RateLimit,
 	authService *auth.Auth,
+	oauthService *oauth.OAuthService,
+	appProvider jwt.AppSecretProvider,
 	msgBroker *rabbitmq.RabbitMQClient,
+	allowedRedirectHosts map[string]bool,
 ) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -280,6 +321,45 @@ func setupRouter(
 				cfg.HTTPServer.HandlersTimeout,
 			),
 		)
+
+		r.Route("/oauth", func(r chi.Router) {
+			// Публичные эндпоинты — юзер ещё не аутентифицирован.
+			r.With(rateLimiter.OAuthLogin()).Get("/{provider}/login",
+				ologin.New(
+					log,
+					oauthService,
+					allowedRedirectHosts,
+				),
+			)
+			r.With(rateLimiter.OAuthCallback()).Get("/{provider}/callback",
+				callback.New(log,
+					oauthService,
+					allowedRedirectHosts,
+					cfg.OAuth.HandlersTimeout,
+				),
+			)
+
+			// Authenticated — RequireAuth обязателен ДО rate limiter'ов,
+			// использующих byUserID (им нужен claims в контексте).
+			r.Group(func(r chi.Router) {
+				r.Use(claimsParser.RequireAuth(appProvider))
+
+				r.Get("/accounts",
+					accounts.New(log, oauthService),
+				)
+				r.With(rateLimiter.OAuthLink()).Post("/{provider}/link",
+					link.New(
+						log,
+						oauthService,
+						allowedRedirectHosts,
+						cfg.HTTPServer.HandlersTimeout,
+					),
+				)
+				r.With(rateLimiter.OAuthUnlink()).Delete("/{provider}",
+					unlink.New(log, oauthService, cfg.HTTPServer.HandlersTimeout),
+				)
+			})
+		})
 	})
 
 	return r
@@ -308,4 +388,12 @@ func setupLogger(env string) *slog.Logger {
 	}
 
 	return log
+}
+
+func allowedRedirectHostSet(allowedHosts []string) map[string]bool {
+	set := make(map[string]bool, len(allowedHosts))
+	for _, h := range allowedHosts {
+		set[h] = true
+	}
+	return set
 }

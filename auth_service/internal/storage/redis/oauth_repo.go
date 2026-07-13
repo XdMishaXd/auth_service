@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"auth_service/internal/auth/oauth"
 	"auth_service/internal/storage"
 
 	"github.com/redis/go-redis/v9"
@@ -14,16 +15,11 @@ import (
 
 const oauthStatePrefix = "oauth_state:"
 
-type OAuthStatePayload struct {
-	RedirectURI string `json:"redirect_uri"`
-	UserID      int64  `json:"user_id,omitempty"`
-}
-
 // SaveOAuthState сохраняет одноразовый state-токен с TTL.
 func (r *RedisRepo) SaveOAuthState(
 	ctx context.Context,
 	state string,
-	payload OAuthStatePayload,
+	payload oauth.OAuthStatePayload,
 	ttl time.Duration,
 ) error {
 	const op = "storage.redis.SaveOAuthState"
@@ -46,7 +42,7 @@ func (r *RedisRepo) SaveOAuthState(
 func (r *RedisRepo) GetAndDeleteOAuthState(
 	ctx context.Context,
 	state string,
-) (*OAuthStatePayload, error) {
+) (*oauth.OAuthStatePayload, error) {
 	const op = "storage.redis.GetAndDeleteOAuthState"
 
 	key := oauthStatePrefix + state
@@ -60,7 +56,7 @@ func (r *RedisRepo) GetAndDeleteOAuthState(
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	var payload OAuthStatePayload
+	var payload oauth.OAuthStatePayload
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
 		return nil, fmt.Errorf("%s: unmarshal payload: %w", op, err)
 	}

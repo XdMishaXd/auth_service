@@ -91,7 +91,7 @@ func (r *PostgresRepo) OAuthAccountsByUserID(ctx context.Context, userID int64) 
 	}
 	defer rows.Close()
 
-	accounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[*models.OAuthAccount])
+	accounts, err := pgx.CollectRows(rows, pgx.RowToAddrOfStructByName[models.OAuthAccount])
 	if err != nil {
 		return nil, fmt.Errorf("%s: collect: %w", op, err)
 	}
@@ -106,17 +106,63 @@ func (r *PostgresRepo) OAuthAccountsByUserID(ctx context.Context, userID int64) 
 func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, provider string) error {
 	const op = "storage.postgres.UnlinkOAuthAccount"
 
-	query := `
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("%s: begin tx: %w", op, err)
+	}
+	defer func() {
+		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+			r.log.Error("rollback failed", sl.Err(rbErr))
+		}
+	}()
+
+	// Блокируем строку юзера — вторая параллельная транзакция на unlink
+	// этого же userID будет ждать здесь, пока первая не закоммитится.
+	// Это и закрывает гонку: без FOR UPDATE обе транзакции могли бы
+	// прочитать "ещё есть привязки" параллельно и обе пройти проверку.
+	var hasPassword bool
+	lockUserQuery := `
+		SELECT password_hash IS NOT NULL
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`
+	if err := tx.QueryRow(ctx, lockUserQuery, userID).Scan(&hasPassword); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.ErrUserNotFound
+		}
+		return fmt.Errorf("%s: lock user: %w", op, err)
+	}
+
+	if !hasPassword {
+		var remaining int
+		countQuery := `
+			SELECT COUNT(*)
+			FROM oauth_accounts
+			WHERE user_id = $1 AND provider != $2
+		`
+		if err := tx.QueryRow(ctx, countQuery, userID, provider).Scan(&remaining); err != nil {
+			return fmt.Errorf("%s: count accounts: %w", op, err)
+		}
+		if remaining == 0 {
+			return storage.ErrOAuthLastAuthMethod
+		}
+	}
+
+	const deleteQuery = `
 		DELETE FROM oauth_accounts
 		WHERE user_id = $1 AND provider = $2
 	`
-
-	res, err := r.pool.Exec(ctx, query, userID, provider)
+	res, err := tx.Exec(ctx, deleteQuery, userID, provider)
 	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: delete: %w", op, err)
 	}
 	if res.RowsAffected() == 0 {
 		return storage.ErrOAuthAccountNotFound
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%s: commit: %w", op, err)
 	}
 
 	return nil

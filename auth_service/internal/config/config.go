@@ -33,9 +33,17 @@ type HTTPServer struct {
 }
 
 type OAuth struct {
-	StateTTL             time.Duration   `yaml:"state_ttl" env-default:"5m"`
-	HandlersTimeout      time.Duration   `yaml:"handlers_timeout" env-default:"10s"`
-	AllowedRedirectHosts map[string]bool `yaml:"allowed_redirect_hosts" env-required:"true"`
+	StateTTL             time.Duration       `yaml:"state_ttl" env-default:"5m"`
+	HandlersTimeout      time.Duration       `yaml:"handlers_timeout" env-default:"10s"`
+	AllowedRedirectHosts []string            `yaml:"allowed_redirect_hosts" env-required:"true"`
+	Google               OAuthProviderConfig `yaml:"google"`
+	GitHub               OAuthProviderConfig `yaml:"github"`
+}
+
+type OAuthProviderConfig struct {
+	ClientID     string `yaml:"client_id" env-required:"true"`
+	ClientSecret string `yaml:"client_secret" env-required:"true"`
+	RedirectURL  string `yaml:"redirect_url" env-required:"true"`
 }
 
 type TwoFactorAuth struct {

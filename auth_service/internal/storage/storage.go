@@ -18,6 +18,7 @@ var (
 	ErrOAuthAccountAlreadyLinked  = errors.New("oauth account already linked to another user")
 	ErrOAuthProviderAlreadyLinked = errors.New("user already has this provider linked")
 	ErrOAuthStateNotFound         = errors.New("oauth state not found or expired")
+	ErrOAuthLastAuthMethod        = errors.New("cannot unlink last authentication method")
 
 	ErrMagicLinkNotFound = errors.New("magic link not found")
 )

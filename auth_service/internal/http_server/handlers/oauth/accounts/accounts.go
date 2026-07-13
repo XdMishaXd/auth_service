@@ -26,10 +26,20 @@ type Response struct {
 	Accounts []Account `json:"accounts"`
 }
 
+// New godoc
+// @Summary      List linked OAuth accounts
+// @Description  Returns all third-party OAuth providers linked to the
+// @Description  currently authenticated user's account.
+// @Tags         oauth
+// @Security     BearerAuth
+// @Produce      json
+// @Success      200  {object}  Response  "Список привязанных аккаунтов"  example({"status": "ok", "accounts": [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Router       /auth/oauth/accounts [get]
 func New(
 	log *slog.Logger,
 	authService *oauth.OAuthService,
-	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.accounts.New"
@@ -68,14 +78,16 @@ func ResponseOK(w http.ResponseWriter, r *http.Request, accounts []Account) {
 	})
 }
 
-func toAccounts(models []*models.OAuthAccount) []Account {
-	result := make([]Account, 0, len(models))
-	for _, m := range models {
+func toAccounts(accounts []*models.OAuthAccount) []Account {
+	result := make([]Account, 0, len(accounts))
+
+	for _, a := range accounts {
 		result = append(result, Account{
-			Provider:  m.Provider,
-			Email:     m.Email,
-			CreatedAt: m.CreatedAt,
+			Provider:  a.Provider,
+			Email:     a.Email,
+			CreatedAt: a.CreatedAt,
 		})
 	}
+
 	return result
 }

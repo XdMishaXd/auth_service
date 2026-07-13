@@ -229,6 +229,444 @@ const docTemplate = `{
                 "x-order": 4
             }
         },
+        "/auth/oauth/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns all third-party OAuth providers linked to the\ncurrently authenticated user's account.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "List linked OAuth accounts",
+                "responses": {
+                    "200": {
+                        "description": "Список привязанных аккаунтов\"  example({\"status\": \"ok\", \"accounts\": [{\"provider\": \"google\", \"email\": \"user@example.com\", \"created_at\": \"2026-01-15T10:00:00Z\"}]})",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_oauth_accounts.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/oauth/{provider}/callback": {
+            "get": {
+                "description": "Handles the redirect from the OAuth provider after user consent.\nValidates state against the stored value (login or link flow),\nexchanges the authorization code for tokens, and either issues\na new access/refresh token pair (login) or links the provider\nto the existing account (link), depending on how state was created.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "OAuth provider callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth provider name (e.g. google, github)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Authorization code issued by the provider",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque state token, must match value issued in /login or /link",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Error code returned by provider if user denied access",
+                        "name": "error",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Пара access/refresh токенов\"  example({\"status\": \"ok\", \"access_token\": \"eyJ...\", \"refresh_token\": \"eyJ...\"})",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_oauth_callback.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Пользователь отклонил доступ, отсутствуют code/state, невалидный app_id или state истёк/невалиден\"  example({\"status\": \"error\", \"error\": \"invalid or expired oauth state\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Email не подтверждён провайдером\"  example({\"status\": \"error\", \"error\": \"email not verified by provider\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Неизвестный OAuth provider\"  example({\"status\": \"error\", \"error\": \"unknown oauth provider\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Конфликт: аккаунт с таким email уже существует, либо provider уже привязан\"  example({\"status\": \"error\", \"error\": \"account with this email already exists, log in and link instead\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/oauth/{provider}/link": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Starts OAuth2 flow to link a third-party provider to the\ncurrently authenticated user's account. Requires a valid\naccess token; user_id is taken from claims, not request body,\nso the link is always bound to the authenticated session.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "Link OAuth provider to existing account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth provider name (e.g. google, github)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "\"https://app.example.com/callback\"",
+                        "description": "Callback URL after auth, must match allowed hosts",
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ссылка для перехода к провайдеру\"  example({\"status\": \"ok\", \"redirect_url\": \"https://accounts.google.com/o/oauth2/...\"})",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_oauth_link.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный redirect_uri или app_id\"  example({\"status\": \"error\", \"error\": \"invalid app id\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Неизвестный OAuth provider\"  example({\"status\": \"error\", \"error\": \"unknown oauth provider\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/oauth/{provider}/login": {
+            "get": {
+                "description": "Starts the OAuth2 authorization flow for the given provider.\nValidates app_id and redirect_uri against the allowed hosts\nwhitelist, then redirects the client to the provider's\nauthorization URL (state is generated and tracked server-side).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "Initiate OAuth login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth provider name (e.g. google, github)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "example": 1,
+                        "description": "ID приложения-клиента",
+                        "name": "app_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "example": "\"https://app.example.com/callback\"",
+                        "description": "Callback URL after auth, must match allowed hosts",
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect to provider's OAuth consent screen"
+                    },
+                    "400": {
+                        "description": "Невалидный app_id или redirect_uri не прошёл валидацию\"  example({\"status\": \"error\", \"error\": \"redirect_uri host not allowed\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Неизвестный OAuth provider\"  example({\"status\": \"error\", \"error\": \"oauth provider not found\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка при формировании authorization URL\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/oauth/{provider}/unlink": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Removes the link between the given OAuth provider and the\ncurrently authenticated user. Fails if this is the user's\nlast remaining authentication method, to prevent account lockout.",
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "Unlink OAuth provider from account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth provider name (e.g. google, github)",
+                        "name": "provider",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Провайдер успешно отвязан"
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Нельзя отвязать последний метод аутентификации\"  example({\"status\": \"error\", \"error\": \"cannot unlink last authentication method\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "OAuth-аккаунт с таким provider не найден у пользователя\"  example({\"status\": \"error\", \"error\": \"oauth account not found\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/password/forgot": {
             "post": {
                 "description": "Initiates a password reset flow for the given email address.\nAlways returns 200 OK regardless of whether the account exists,\nto prevent user enumeration. If the account exists, a reset link\nis sent to the provided email; delivery failures are logged\nserver-side and do not affect the response.",
@@ -773,6 +1211,68 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_server_handlers_oauth_accounts.Account": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_server_handlers_oauth_accounts.Response": {
+            "type": "object",
+            "properties": {
+                "accounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_http_server_handlers_oauth_accounts.Account"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_server_handlers_oauth_callback.Response": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_http_server_handlers_oauth_link.Response": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "redirect_url": {
                     "type": "string"
                 },
                 "status": {
