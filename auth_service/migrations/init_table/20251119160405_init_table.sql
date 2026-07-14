@@ -10,8 +10,21 @@ CREATE TABLE IF NOT EXISTS users (
   username CITEXT NOT NULL CONSTRAINT uq_users_username UNIQUE,
   password_hash BYTEA,
   is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  is_2fa_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  two_fa_method TEXT CONSTRAINT chk_users_2fa_method CHECK (two_fa_method IN ('magic_link', 'totp')),
+  two_fa_enabled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT chk_users_2fa_method_consistency CHECK (
+    (
+      is_2fa_enabled = FALSE
+      AND two_fa_method IS NULL
+    )
+    OR (
+      is_2fa_enabled = TRUE
+      AND two_fa_method IS NOT NULL
+    )
+  )
 );
 -- ==========================================================
 -- Applications
@@ -35,9 +48,7 @@ UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- Refresh Tokens
 -- ==========================================================
 CREATE TABLE IF NOT EXISTS refresh_tokens (
-  -- публичный идентификатор токена (идёт в самом refresh token)
   id UUID CONSTRAINT pk_refresh_tokens PRIMARY KEY,
-  -- быстрый поиск по токену (SHA-256 от secret части)
   token_hash BYTEA NOT NULL CONSTRAINT uq_refresh_tokens_hash UNIQUE,
   user_id BIGINT NOT NULL,
   app_id BIGINT NOT NULL,
@@ -47,12 +58,6 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_refresh_tokens_app FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE
 );
--- быстрый поиск токенов пользователя (например, список сессий)
--- CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
--- чистка просроченных токенов
--- CREATE INDEX idx_refresh_tokens_active_expires ON refresh_tokens (expires_at);
--- полезно для revoke / cleanup конкретного пользователя
--- CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_app ON refresh_tokens(user_id, app_id);
 -- ==========================================================
 -- Pass reset tokens
 -- ==========================================================
@@ -82,9 +87,44 @@ CREATE TABLE IF NOT EXISTS oauth_accounts (
   CONSTRAINT fk_oauth_accounts_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX idx_oauth_accounts_user_id ON oauth_accounts (user_id);
+-- ==========================================================
+-- Magic links (2FA)
+-- ==========================================================
+CREATE TABLE magic_links (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  app_id BIGINT NOT NULL,
+  token_hash BYTEA NOT NULL,
+  session_id VARCHAR(64) NOT NULL,
+  ip_address INET,
+  user_agent TEXT,
+  used_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_magic_links_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_magic_links_app FOREIGN KEY (app_id) REFERENCES apps(id) ON DELETE CASCADE,
+  CONSTRAINT chk_magic_links_expiry CHECK (expires_at > created_at)
+);
+CREATE UNIQUE INDEX uq_magic_links_token_hash_active ON magic_links(token_hash)
+WHERE used_at IS NULL;
+CREATE INDEX idx_magic_links_user_active ON magic_links(user_id, expires_at)
+WHERE used_at IS NULL;
+CREATE INDEX idx_magic_links_session_id ON magic_links(session_id)
+WHERE used_at IS NULL;
+CREATE OR REPLACE FUNCTION cleanup_expired_magic_links() RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE deleted_count INTEGER;
+BEGIN
+DELETE FROM magic_links
+WHERE expires_at < NOW() - INTERVAL '1 day';
+GET DIAGNOSTICS deleted_count = ROW_COUNT;
+RETURN deleted_count;
+END;
+$$;
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
+DROP FUNCTION IF EXISTS cleanup_expired_magic_links();
+DROP TABLE IF EXISTS magic_links;
 DROP TABLE IF EXISTS oauth_accounts;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS refresh_tokens;

@@ -1,6 +1,7 @@
 package models
 
 import (
+	"net"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,17 +67,17 @@ type MagicLinkVerificatonResult struct {
 }
 
 type MagicLink struct {
-	ID        int64      `json:"id"`
-	UserID    int64      `json:"user_id"`
-	AppID     int32      `json:"app_id"`
-	TokenHash string     `json:"token_hash"` // ! token hash дожен быть []byte
-	SessionID string     `json:"session_id"`
-	IPAddress string     `json:"ip_address"`
-	UserAgent string     `json:"user_agent"`
-	Used      bool       `json:"used"`
-	UsedAt    *time.Time `json:"used_at,omitempty"`
-	ExpiresAt time.Time  `json:"expires_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID        int64       `json:"id"`
+	UserID    int64       `json:"user_id"`
+	AppID     int32       `json:"app_id"`
+	TokenHash []byte      `json:"token_hash"` // ! token hash дожен быть []byte
+	SessionID string      `json:"session_id"`
+	IPAddress *net.IPAddr `json:"ip_address"`
+	UserAgent *string     `json:"user_agent"`
+	Used      bool        `json:"used"`
+	UsedAt    *time.Time  `json:"used_at,omitempty"`
+	ExpiresAt time.Time   `json:"expires_at"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 // * IsExpired проверяет, истек ли срок действия ссылки

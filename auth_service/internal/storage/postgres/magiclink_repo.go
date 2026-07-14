@@ -11,12 +11,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// * TwoFAStatus состояние 2FA пользователя — используется сервисным слоем,
+// чтобы решить, требовать пароль или magic-link код при disable/login-flow.
+type TwoFAStatus struct {
+	IsEnabled   bool
+	Method      *string
+	HasPassword bool
+}
+
 // * SaveMagicLink сохраняет magic link
 func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink) error {
 	const op = "storage.postgres.SaveMagicLink"
 
 	query := `
-		INSERT INTO magic_links (
+		NSERT INTO magic_links (
 			user_id, 
 			app_id, 
 			token_hash, 
@@ -46,41 +54,24 @@ func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink
 	return nil
 }
 
-// * MagicLinkByTokenHash получает magic link по хешу токена
-func (r *PostgresRepo) MagicLinkByTokenHash(ctx context.Context, tokenHash []byte) (*models.MagicLink, error) {
-	const op = "storage.postgres.MagicLinkByTokenHash"
+// * ConsumeMagicLink атомарно проверяет и инвалидирует magic link по хешу токена.
+func (r *PostgresRepo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (*models.MagicLink, error) {
+	const op = "storage.postgres.ConsumeMagicLink"
 
 	query := `
-		SELECT 
-			id, 
-			user_id, 
-			app_id, 
-			token_hash, 
-			session_id, 
-			ip_address, 
-			user_agent, 
-			used, 
-			used_at, 
-			expires_at, 
-			created_at
-		FROM magic_links
+		UPDATE magic_links
+		SET used_at = NOW()
 		WHERE token_hash = $1
+			AND used_at IS NULL
+			AND expires_at > NOW()
+		RETURNING id, user_id, app_id, token_hash, session_id, ip_address, user_agent, used_at, expires_at, created_at
 	`
 
 	link := &models.MagicLink{}
 
 	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
-		&link.ID,
-		&link.UserID,
-		&link.AppID,
-		&link.TokenHash,
-		&link.SessionID,
-		&link.IPAddress,
-		&link.UserAgent,
-		&link.Used,
-		&link.UsedAt,
-		&link.ExpiresAt,
-		&link.CreatedAt,
+		&link.ID, &link.UserID, &link.AppID, &link.TokenHash, &link.SessionID,
+		&link.IPAddress, &link.UserAgent, &link.UsedAt, &link.ExpiresAt, &link.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -93,79 +84,14 @@ func (r *PostgresRepo) MagicLinkByTokenHash(ctx context.Context, tokenHash []byt
 	return link, nil
 }
 
-// * MarkMagicLinkAsUsed помечает magic link как использованный
-func (r *PostgresRepo) MarkMagicLinkAsUsed(ctx context.Context, id int64) error {
-	const op = "storage.postgres.MarkMagicLinkAsUsed"
-
-	query := `
-		UPDATE magic_links 
-		SET used = true, 
-			used_at = NOW() 
-		WHERE id = $1 AND used = false
-	`
-
-	result, err := r.pool.Exec(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
-	}
-
-	rows := result.RowsAffected()
-	if rows == 0 {
-		return fmt.Errorf("%s: magic link not found or already used", op)
-	}
-
-	return nil
-}
-
-// * ActiveMagicLinksByUserID получает активные magic links пользователя
-func (r *PostgresRepo) ActiveMagicLinksByUserID(ctx context.Context, userID int64) ([]*models.MagicLink, error) {
-	const op = "storage.postgres.ActiveMagicLinksByUserID"
-
-	query := `
-		SELECT 
-			id, 
-			user_id, 
-			app_id, 
-			token_hash, 
-			session_id, 
-			ip_address, 
-			user_agent, 
-			used, 
-			used_at, 
-			expires_at, 
-			created_at
-		FROM magic_links
-		WHERE user_id = $1 AND used = false AND expires_at > NOW()
-		ORDER BY created_at DESC
-	`
-
-	rows, err := r.pool.Query(ctx, query, userID)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-	defer rows.Close()
-
-	links, err := pgx.CollectRows(rows, pgx.RowToStructByName[*models.MagicLink])
-	if err != nil {
-		return nil, fmt.Errorf("%s: collect: %w", op, err)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	return links, nil
-}
-
 // * InvalidateMagicLinksByUserID инвалидирует все активные magic links пользователя
 func (r *PostgresRepo) InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error) {
 	const op = "storage.postgres.InvalidateMagicLinksByUserID"
 
 	query := `
-		UPDATE magic_links 
-		SET used = true, 
-			used_at = NOW() 
-		WHERE user_id = $1 AND used = false AND expires_at > NOW()
+		UPDATE magic_links
+		SET used_at = NOW()
+		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
 	`
 
 	result, err := r.pool.Exec(ctx, query, userID)
@@ -173,8 +99,78 @@ func (r *PostgresRepo) InvalidateMagicLinksByUserID(ctx context.Context, userID 
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
 
-	rows := result.RowsAffected()
-	return rows, nil
+	return result.RowsAffected(), nil
+}
+
+// * EnableMagicLink2FA включает magic-link 2FA пользователю.
+func (r *PostgresRepo) EnableMagicLink2FA(ctx context.Context, userID int64) error {
+	const op = "storage.postgres.EnableMagicLink2FA"
+
+	query := `
+		UPDATE users
+		SET is_2fa_enabled = TRUE,
+			two_fa_method = 'magic_link',
+			two_fa_enabled_at = NOW()
+		WHERE id = $1
+	`
+
+	result, err := r.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return storage.ErrUserNotFound
+	}
+
+	return nil
+}
+
+// * DisableMagicLink2FA отключает 2FA пользователю.
+func (r *PostgresRepo) DisableMagicLink2FA(ctx context.Context, userID int64) error {
+	const op = "storage.postgres.DisableMagicLink2FA"
+
+	query := `
+		UPDATE users
+		SET is_2fa_enabled = FALSE,
+			two_fa_method = NULL,
+			two_fa_enabled_at = NULL
+		WHERE id = $1
+	`
+
+	result, err := r.pool.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return storage.ErrUserNotFound
+	}
+
+	return nil
+}
+
+func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*TwoFAStatus, error) {
+	const op = "storage.postgres.TwoFAStatus"
+
+	query := `
+		SELECT is_2fa_enabled, two_fa_method, (password_hash IS NOT NULL) AS has_password
+		FROM users
+		WHERE id = $1
+	`
+
+	status := &TwoFAStatus{}
+
+	err := r.pool.QueryRow(ctx, query, userID).Scan(&status.IsEnabled, &status.Method, &status.HasPassword)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, storage.ErrUserNotFound
+		}
+
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return status, nil
 }
 
 // * CleanupExpiredMagicLinks вызывает функцию БД для очистки истекших ссылок

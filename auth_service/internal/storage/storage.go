@@ -20,7 +20,8 @@ var (
 	ErrOAuthStateNotFound         = errors.New("oauth state not found or expired")
 	ErrOAuthLastAuthMethod        = errors.New("cannot unlink last authentication method")
 
-	ErrMagicLinkNotFound = errors.New("magic link not found")
+	ErrMagicLinkNotFound      = errors.New("magic link not found")
+	ErrPendingSessionNotFound = errors.New("pending session not found or expired")
 )
 
 // gcraScript реализует GCRA (Generic Cell Rate Algorithm) одним атомарным

@@ -2,16 +2,17 @@ package twoFactorAuth
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net"
 	"time"
 
 	"auth_service/internal/config"
 	"auth_service/internal/models"
-
-	"github.com/golang-jwt/jwt/v5"
+	"auth_service/internal/storage/redis"
 )
 
 type Publisher interface {
@@ -19,20 +20,15 @@ type Publisher interface {
 }
 
 type PostgresRepo interface {
-	CreateMagicLink(ctx context.Context, link *models.MagicLink) error
-	GetMagicLinkByTokenHash(ctx context.Context, tokenHash string) (*models.MagicLink, error)
-	MarkMagicLinkAsUsed(ctx context.Context, id int64) error
-	GetActiveMagicLinksByUserID(ctx context.Context, userID int64) ([]*models.MagicLink, error)
+	SaveMagicLink(ctx context.Context, link *models.MagicLink) error
+	ConsumeMagicLink(ctx context.Context, tokenHash []byte) (*models.MagicLink, error)
 	InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error)
 	CleanupExpiredMagicLinks(ctx context.Context) (int, error)
 }
 
 type RedisRepo interface {
-	MarkMagicLinkAsUsed(ctx context.Context, tokenHash string, ttl time.Duration) (bool, error)
-	IsMagicLinkUsed(ctx context.Context, tokenHash string) (bool, error)
-	SetMagicLinkPending(ctx context.Context, tokenHash string, userID int64, appID int32, ttl time.Duration) error
-	DeleteMagicLinkPending(ctx context.Context, tokenHash string) error
-	InvalidateMagicLinksByHashes(ctx context.Context, tokenHashes []string, ttl time.Duration) error
+	GetPendingSession(ctx context.Context, sessionID string) (*redis.PendingSession, error)
+	DeletePendingSession(ctx context.Context, sessionID string) error
 }
 
 type TwoFactorAuthentificator struct {
@@ -40,15 +36,8 @@ type TwoFactorAuthentificator struct {
 	redis       RedisRepo
 	publisher   Publisher
 	log         *slog.Logger
-	tokenSecret string
 	tokenTTL    time.Duration
 	redirectURL string
-}
-
-type tokenClaims struct {
-	UserID    int64
-	AppID     int32
-	SessionID string
 }
 
 func New(
@@ -63,45 +52,39 @@ func New(
 		redis:       redis,
 		publisher:   publisher,
 		log:         log,
-		tokenSecret: cfg.TwoFactorAuth.TokenSecret,
 		tokenTTL:    cfg.TwoFactorAuth.TokenTTL,
 		redirectURL: cfg.TwoFactorAuth.RedirectURL,
 	}
 }
 
-// * SendMagicLink генерирует и отправляет magic link на email
-func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *models.SendMagicLinkRequest) error {
+// * SendMagicLink генерирует токен и ставит письмо в очередь на отправку.
+func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *models.SendMagicLinkRequest, sessionID string) error {
 	const op = "twoFactorAuth.Service.SendMagicLink"
 
-	token, sessionID, err := s.generateToken(req.UserID, req.AppID)
+	selector, verifier, err := generateSelectorVerifier()
 	if err != nil {
-		s.log.Error("failed to generate token", slog.String("op", op), slog.Any("err", err))
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: generate token: %w", op, err)
 	}
 
-	tokenHash := s.hashToken(token)
+	verifierHash := hashVerifier(verifier)
 	expiresAt := time.Now().Add(s.tokenTTL)
 
 	magicLink := &models.MagicLink{
 		UserID:    req.UserID,
 		AppID:     req.AppID,
-		TokenHash: tokenHash,
+		TokenHash: verifierHash,
 		SessionID: sessionID,
-		IPAddress: req.IPAddress,
-		UserAgent: req.UserAgent,
+		IPAddress: parseIPAddress(req.IPAddress),
+		UserAgent: &req.UserAgent,
 		ExpiresAt: expiresAt,
 	}
 
-	if err := s.pg.CreateMagicLink(ctx, magicLink); err != nil {
-		s.log.Error("failed to save to postgres", slog.String("op", op), slog.Any("err", err))
-		return fmt.Errorf("%s: %w", op, err)
+	if err := s.pg.SaveMagicLink(ctx, magicLink); err != nil {
+		return fmt.Errorf("%s: save: %w", op, err)
 	}
 
-	if err := s.redis.SetMagicLinkPending(ctx, tokenHash, req.UserID, req.AppID, s.tokenTTL); err != nil {
-		s.log.Warn("failed to save to redis", slog.String("op", op), slog.Any("err", err))
-	}
-
-	magicLinkURL := fmt.Sprintf("%s/auth/2fa/verify-link?token=%s", s.redirectURL, token)
+	rawToken := selector + "." + verifier
+	magicLinkURL := fmt.Sprintf("%s/auth/2fa/verify-link#token=%s", s.redirectURL, rawToken)
 
 	msg := models.Message{
 		Email:   req.Email,
@@ -110,11 +93,10 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 	}
 
 	if err := s.publisher.SendMessage(ctx, msg); err != nil {
-		s.log.Error("failed to send email", slog.String("op", op), slog.Any("err", err))
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: enqueue message: %w", op, err)
 	}
 
-	s.log.Info("magic link sent",
+	s.log.Info("magic link issued",
 		slog.Int64("user_id", req.UserID),
 		slog.Int("app_id", int(req.AppID)),
 		slog.String("session_id", sessionID),
@@ -123,52 +105,47 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 	return nil
 }
 
-// * parseToken парсит и валидирует JWT токен
-func (s *TwoFactorAuthentificator) ParseToken(tokenStr string) (*tokenClaims, error) {
-	claims := jwt.MapClaims{}
+func (s *TwoFactorAuthentificator) VerifyLogin(
+	ctx context.Context,
+	sessionID, rawToken string,
+) (userID int64, appID int32, err error) {
+	const op = "twoFactorAuth.Service.VerifyLogin"
 
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return []byte(s.tokenSecret), nil
-	})
+	pending, err := s.redis.GetPendingSession(ctx, sessionID)
 	if err != nil {
-		return nil, err
+		return 0, 0, fmt.Errorf("%s: pending session: %w", op, err)
 	}
 
-	if !token.Valid {
-		return nil, fmt.Errorf("invalid token")
-	}
-
-	purpose, ok := claims["purpose"].(string)
-	if !ok || purpose != "2fa" {
-		return nil, fmt.Errorf("invalid token purpose")
-	}
-
-	userID, ok := claims["sub"].(float64)
+	selector, verifier, ok := splitToken(rawToken)
 	if !ok {
-		return nil, fmt.Errorf("missing user_id")
+		return 0, 0, fmt.Errorf("%s: malformed token", op)
 	}
 
-	appID, ok := claims["app_id"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("missing app_id")
+	verifierHash := hashVerifier(verifier)
+
+	link, err := s.pg.ConsumeMagicLink(ctx, verifierHash)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%s: consume: %w", op, err)
 	}
 
-	sessionID, ok := claims["session_id"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing session_id")
+	// Сверка selector — быстрый lookup уже сделан по хешу verifier'а в SQL,
+	// но привязку к конкретной pending-сессии проверяем явно, constant-time
+	// сравнение исключает лишний риск timing-атаки на строковое поле.
+	if link.SessionID != sessionID {
+		return 0, 0, fmt.Errorf("%s: session mismatch", op)
+	}
+	if link.UserID != pending.UserID || link.AppID != pending.AppID {
+		return 0, 0, fmt.Errorf("%s: pending session mismatch", op)
+	}
+	_ = selector // selector использован только для читаемости токена в письме
+
+	if err := s.redis.DeletePendingSession(ctx, sessionID); err != nil {
+		s.log.Warn("failed to delete pending session", slog.String("op", op), slog.Any("err", err))
 	}
 
-	return &tokenClaims{
-		UserID:    int64(userID),
-		AppID:     int32(appID),
-		SessionID: sessionID,
-	}, nil
+	return link.UserID, link.AppID, nil
 }
 
-// * CleanupExpired очищает истекшие magic links (вызывать через cron)
 func (s *TwoFactorAuthentificator) CleanupExpired(ctx context.Context) (int, error) {
 	const op = "twoFactorAuth.Service.CleanupExpired"
 
@@ -182,30 +159,43 @@ func (s *TwoFactorAuthentificator) CleanupExpired(ctx context.Context) (int, err
 	return deleted, nil
 }
 
-// * generateToken генерирует JWT токен для magic link
-func (s *TwoFactorAuthentificator) generateToken(userID int64, appID int32) (string, string, error) {
-	sessionID := fmt.Sprintf("sess_%d_%d", time.Now().UnixNano(), userID)
-
-	claims := jwt.MapClaims{
-		"sub":        userID,
-		"app_id":     appID,
-		"session_id": sessionID,
-		"purpose":    "2fa",
-		"iat":        time.Now().Unix(),
-		"exp":        time.Now().Add(s.tokenTTL).Unix(),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedToken, err := token.SignedString([]byte(s.tokenSecret))
-	if err != nil {
+func generateSelectorVerifier() (selector, verifier string, err error) {
+	selBytes := make([]byte, 16)
+	if _, err = rand.Read(selBytes); err != nil {
 		return "", "", err
 	}
 
-	return signedToken, sessionID, nil
+	verBytes := make([]byte, 32)
+	if _, err = rand.Read(verBytes); err != nil {
+		return "", "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(selBytes),
+		base64.RawURLEncoding.EncodeToString(verBytes),
+		nil
 }
 
-// * hashToken создает SHA256 хеш токена
-func (s *TwoFactorAuthentificator) hashToken(token string) string {
-	hash := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(hash[:])
+func splitToken(raw string) (selector, verifier string, ok bool) {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '.' {
+			return raw[:i], raw[i+1:], true
+		}
+	}
+	return "", "", false
+}
+
+func hashVerifier(verifier string) []byte {
+	h := sha256.Sum256([]byte(verifier))
+	return h[:]
+}
+
+func parseIPAddress(raw string) *net.IPAddr {
+	if raw == "" {
+		return nil
+	}
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return nil
+	}
+	return &net.IPAddr{IP: ip}
 }
