@@ -25,8 +25,10 @@ type Request struct {
 
 type Response struct {
 	resp.Response
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken      string `json:"access_token,omitempty"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	TwoFactorPending bool   `json:"two_factor_pending,omitempty"`
+	SessionID        string `json:"session_id,omitempty"`
 }
 
 // New godoc
@@ -112,14 +114,10 @@ func New(
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
-		accessToken, refreshToken, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID)
+		loginResult, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID)
 		if err != nil {
 			switch {
-			case errors.Is(err, storage.ErrUserNotFound):
-				render.Status(r, http.StatusNotFound)
-				render.JSON(w, r, resp.Error("User not found"))
-				return
-			case errors.Is(err, auth.ErrInvalidCredentials):
+			case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("Invalid credentials"))
 				return
@@ -141,9 +139,15 @@ func New(
 			return
 		}
 
+		if loginResult.TwoFactorPending {
+			log.Info("password verified, 2fa challenge issued")
+			ResponseTwoFAPending(w, r, loginResult.SessionID)
+			return
+		}
+
 		log.Info("User logged in successfully")
 
-		ResponseOK(w, r, accessToken, refreshToken)
+		ResponseOK(w, r, loginResult.AccessToken, loginResult.RefreshToken)
 	}
 }
 
@@ -152,5 +156,13 @@ func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToke
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
+	})
+}
+
+func ResponseTwoFAPending(w http.ResponseWriter, r *http.Request, sessionID string) {
+	render.JSON(w, r, Response{
+		Response:         resp.OK(),
+		TwoFactorPending: true,
+		SessionID:        sessionID,
 	})
 }

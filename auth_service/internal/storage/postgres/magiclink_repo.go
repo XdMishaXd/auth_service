@@ -11,14 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// * TwoFAStatus состояние 2FA пользователя — используется сервисным слоем,
-// чтобы решить, требовать пароль или magic-link код при disable/login-flow.
-type TwoFAStatus struct {
-	IsEnabled   bool
-	Method      *string
-	HasPassword bool
-}
-
 // * SaveMagicLink сохраняет magic link
 func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink) error {
 	const op = "storage.postgres.SaveMagicLink"
@@ -29,8 +21,6 @@ func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink
 			app_id, 
 			token_hash, 
 			session_id, 
-			ip_address, 
-			user_agent, 
 			expires_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at
@@ -43,8 +33,6 @@ func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink
 		link.AppID,
 		link.TokenHash,
 		link.SessionID,
-		link.IPAddress,
-		link.UserAgent,
 		link.ExpiresAt,
 	).Scan(&link.ID, &link.CreatedAt)
 	if err != nil {
@@ -71,7 +59,7 @@ func (r *PostgresRepo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (
 
 	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
 		&link.ID, &link.UserID, &link.AppID, &link.TokenHash, &link.SessionID,
-		&link.IPAddress, &link.UserAgent, &link.UsedAt, &link.ExpiresAt, &link.CreatedAt,
+		&link.UsedAt, &link.ExpiresAt, &link.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -150,7 +138,7 @@ func (r *PostgresRepo) DisableMagicLink2FA(ctx context.Context, userID int64) er
 	return nil
 }
 
-func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*TwoFAStatus, error) {
+func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error) {
 	const op = "storage.postgres.TwoFAStatus"
 
 	query := `
@@ -159,7 +147,7 @@ func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*TwoFASta
 		WHERE id = $1
 	`
 
-	status := &TwoFAStatus{}
+	status := &models.TwoFAStatus{}
 
 	err := r.pool.QueryRow(ctx, query, userID).Scan(&status.IsEnabled, &status.Method, &status.HasPassword)
 	if err != nil {

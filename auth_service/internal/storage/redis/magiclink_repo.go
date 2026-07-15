@@ -5,19 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"auth_service/internal/models"
 	"auth_service/internal/storage"
 )
 
-// PendingSession — состояние логина между успешной проверкой пароля и
-// подтверждением второго фактора (magic link).
-type PendingSession struct {
-	UserID int64
-	AppID  int32
-}
-
 // SetPendingSession создаёт pending-сессию логина после успешной проверки
 // пароля/oauth, до подтверждения второго фактора.
-func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, session PendingSession, ttl time.Duration) error {
+func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, session models.PendingSession, ttl time.Duration) error {
 	const op = "storage.redis.SetPendingSession"
 
 	key := pendingSessionKey(sessionID)
@@ -41,7 +35,7 @@ func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, ses
 
 // GetPendingSession читает pending-сессию. Не удаляет её — используется для
 // сверки session_id при выпуске нового magic-link (resend) без завершения флоу.
-func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*PendingSession, error) {
+func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*models.PendingSession, error) {
 	const op = "storage.redis.GetPendingSession"
 
 	key := pendingSessionKey(sessionID)
@@ -55,7 +49,7 @@ func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*P
 		return nil, storage.ErrPendingSessionNotFound
 	}
 
-	session := &PendingSession{}
+	session := &models.PendingSession{}
 	if _, err := fmt.Sscanf(res["user_id"], "%d", &session.UserID); err != nil {
 		return nil, fmt.Errorf("%s: parse user_id: %w", op, err)
 	}

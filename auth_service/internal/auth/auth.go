@@ -32,14 +32,23 @@ var (
 )
 
 type Auth struct {
-	Log         *slog.Logger
-	UsrSaver    UserSaver
-	UsrProvider UserProvider
-	AppProvider AppProvider
+	Log                 *slog.Logger
+	UsrSaver            UserSaver
+	UsrProvider         UserProvider
+	AppProvider         AppProvider
+	TwoFAStatusProvider TwoFAStatusProvider
+	TwoFAChallenger     TwoFAChallenger
 
 	tokenTTL   time.Duration
 	refreshTTL time.Duration
 	resetTTL   time.Duration
+}
+
+type LoginResult struct {
+	AccessToken      string
+	RefreshToken     string
+	TwoFactorPending bool
+	SessionID        string
 }
 
 type UserSaver interface {
@@ -71,6 +80,14 @@ type AppProvider interface {
 	App(ctx context.Context, appID int32) (*models.App, error)
 }
 
+type TwoFAStatusProvider interface {
+	TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error)
+}
+
+type TwoFAChallenger interface {
+	RequestChallenge(ctx context.Context, user *models.User, appID int32) (sessionID string, err error)
+}
+
 func New(
 	log *slog.Logger,
 	userSaver UserSaver,
@@ -94,7 +111,7 @@ func (a *Auth) Login(
 	ctx context.Context,
 	email, password string,
 	appID int32,
-) (accessToken string, refreshToken string, err error) {
+) (*LoginResult, error) {
 	const op = "Auth.Login"
 
 	log := a.Log.With(slog.String("op", op))
@@ -103,28 +120,49 @@ func (a *Auth) Login(
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found")
-			return "", "", storage.ErrUserNotFound
+			return nil, storage.ErrUserNotFound
 		}
 
 		log.Error("failed to get user", sl.Err(err))
-		return "", "", err
-	}
-
-	if !user.IsVerified {
-		return "", "", ErrEmailNotVerified
+		return nil, err
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
 		log.Info("invalid credentials", sl.Err(err))
-		return "", "", ErrInvalidCredentials
+		return nil, ErrInvalidCredentials
+	}
+
+	if !user.IsVerified {
+		return nil, ErrEmailNotVerified
 	}
 
 	app, err := a.AppProvider.App(ctx, appID)
 	if err != nil {
-		return "", "", ErrInvalidAppID
+		return nil, ErrInvalidAppID
 	}
 
-	return a.IssueTokens(ctx, user, app)
+	status, err := a.TwoFAStatusProvider.TwoFAStatus(ctx, user.ID)
+	if err != nil {
+		log.Error("failed to get 2fa status", sl.Err(err))
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if status.IsEnabled {
+		sessionID, err := a.TwoFAChallenger.RequestChallenge(ctx, user, app.ID)
+		if err != nil {
+			log.Error("failed to request 2fa challenge", sl.Err(err))
+			return nil, fmt.Errorf("%s: %w", op, err)
+		}
+
+		return &LoginResult{TwoFactorPending: true, SessionID: sessionID}, nil
+	}
+
+	accessToken, refreshToken, err := a.IssueTokens(ctx, user, app)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return &LoginResult{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
 func (a *Auth) RegisterNewUser(

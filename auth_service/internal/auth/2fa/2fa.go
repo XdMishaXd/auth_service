@@ -7,12 +7,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"net"
 	"time"
 
 	"auth_service/internal/config"
 	"auth_service/internal/models"
-	"auth_service/internal/storage/redis"
 )
 
 type Publisher interface {
@@ -27,7 +25,8 @@ type PostgresRepo interface {
 }
 
 type RedisRepo interface {
-	GetPendingSession(ctx context.Context, sessionID string) (*redis.PendingSession, error)
+	SetPendingSession(ctx context.Context, sessionID string, session models.PendingSession, ttl time.Duration) error
+	GetPendingSession(ctx context.Context, sessionID string) (*models.PendingSession, error)
 	DeletePendingSession(ctx context.Context, sessionID string) error
 }
 
@@ -74,8 +73,6 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 		AppID:     req.AppID,
 		TokenHash: verifierHash,
 		SessionID: sessionID,
-		IPAddress: parseIPAddress(req.IPAddress),
-		UserAgent: &req.UserAgent,
 		ExpiresAt: expiresAt,
 	}
 
@@ -146,6 +143,42 @@ func (s *TwoFactorAuthentificator) VerifyLogin(
 	return link.UserID, link.AppID, nil
 }
 
+func (s *TwoFactorAuthentificator) RequestChallenge(
+	ctx context.Context,
+	user *models.User,
+	appID int32,
+	pendingSessionTTL time.Duration,
+) (string, error) {
+	const op = "twoFactorAuth.Service.RequestChallenge"
+
+	sessionID, err := generateSessionID()
+	if err != nil {
+		return "", fmt.Errorf("%s: generate session id: %w", op, err)
+	}
+
+	session := models.PendingSession{
+		UserID: user.ID,
+		AppID:  appID,
+	}
+
+	if err := s.redis.SetPendingSession(ctx, sessionID, session, pendingSessionTTL); err != nil {
+		return "", fmt.Errorf("%s: set pending session: %w", op, err)
+	}
+
+	req := &models.SendMagicLinkRequest{
+		UserID: user.ID,
+		AppID:  appID,
+		Email:  user.Email,
+	}
+
+	if err := s.SendMagicLink(ctx, req, sessionID); err != nil {
+		s.log.Error("failed to send magic link", slog.String("op", op), slog.Any("err", err))
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return sessionID, nil
+}
+
 func (s *TwoFactorAuthentificator) CleanupExpired(ctx context.Context) (int, error) {
 	const op = "twoFactorAuth.Service.CleanupExpired"
 
@@ -189,13 +222,22 @@ func hashVerifier(verifier string) []byte {
 	return h[:]
 }
 
-func parseIPAddress(raw string) *net.IPAddr {
-	if raw == "" {
-		return nil
+// func parseIPAddress(raw string) *net.IPAddr {
+// 	if raw == "" {
+// 		return nil
+// 	}
+// 	ip := net.ParseIP(raw)
+// 	if ip == nil {
+// 		return nil
+// 	}
+// 	return &net.IPAddr{IP: ip}
+// }
+
+func generateSessionID() (string, error) {
+	b := make([]byte, 24)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generateSessionID: %w", err)
 	}
-	ip := net.ParseIP(raw)
-	if ip == nil {
-		return nil
-	}
-	return &net.IPAddr{IP: ip}
+
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
