@@ -102,6 +102,21 @@ func (r *PostgresRepo) OAuthAccountsByUserID(ctx context.Context, userID int64) 
 	return accounts, nil
 }
 
+// * HasOAuthAccounts проверяет, есть ли у пользователя хотя бы один привязанный oauth-аккаунт.
+func (r *PostgresRepo) HasOAuthAccounts(ctx context.Context, userID int64) (bool, error) {
+	const op = "storage.postgres.HasOAuthAccounts"
+
+	var exists bool
+
+	query := `SELECT EXISTS(SELECT 1 FROM oauth_accounts WHERE user_id = $1)`
+
+	if err := r.pool.QueryRow(ctx, query, userID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return exists, nil
+}
+
 // * UnlinkOAuthAccount отвязывает provider от юзера.
 func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, provider string) error {
 	const op = "storage.postgres.UnlinkOAuthAccount"

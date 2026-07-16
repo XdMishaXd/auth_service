@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
+	twoFactorAuth "auth_service/internal/auth/2fa"
 	"auth_service/internal/auth/oauth"
 	"auth_service/internal/auth/oauth/providers"
 	"auth_service/internal/config"
@@ -124,11 +125,20 @@ func main() {
 
 	rlMiddlewares := httpRateLimit.New(limiter, log)
 
+	twoFactorAuthService := twoFactorAuth.New(
+		postgresql,
+		redis,
+		rabbitMQClient,
+		log,
+		cfg,
+	)
+
 	authService := auth.New(
 		log,
 		postgresql,
 		postgresql,
 		postgresql,
+		twoFactorAuthService,
 		cfg.Tokens.AccessTokenTTL,
 		cfg.Tokens.RefreshTokenTTL,
 		cfg.Tokens.ResetTokenTTL,
@@ -273,7 +283,13 @@ func setupRouter(
 			),
 		)
 		r.With(rateLimiter.Login()).Post("/login",
-			login.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
+			login.New(
+				log,
+				validate,
+				authService,
+				cfg.HTTPServer.HandlersTimeout,
+				cfg.TwoFactorAuth.PendingSessionTTL,
+			),
 		)
 		r.With(rateLimiter.Refresh()).Post("/refresh",
 			refresh.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),

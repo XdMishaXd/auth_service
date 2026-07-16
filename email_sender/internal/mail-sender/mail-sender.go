@@ -19,6 +19,8 @@ func (m *Mailer) Send(to, from, body, purpose string) error {
 		msg.SetHeader("Subject", "Сброс пароля")
 	case purpose == "email_verification":
 		msg.SetHeader("Subject", "Подтверждение почты")
+	case purpose == "2fa":
+		msg.SetHeader("Subject", "Подтверждение действия")
 	}
 
 	msg.SetBody("text/plain", body)

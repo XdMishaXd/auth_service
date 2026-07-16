@@ -102,39 +102,14 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 	return nil
 }
 
-func (s *TwoFactorAuthentificator) VerifyLogin(
-	ctx context.Context,
-	sessionID, rawToken string,
-) (userID int64, appID int32, err error) {
+// * VerifyLogin проверяет токен в рамках логина и завершает pending-сессию.
+func (s *TwoFactorAuthentificator) VerifyLogin(ctx context.Context, sessionID, rawToken string) (userID int64, appID int32, err error) {
 	const op = "twoFactorAuth.Service.VerifyLogin"
 
-	pending, err := s.redis.GetPendingSession(ctx, sessionID)
+	link, err := s.verifyToken(ctx, sessionID, rawToken)
 	if err != nil {
-		return 0, 0, fmt.Errorf("%s: pending session: %w", op, err)
+		return 0, 0, fmt.Errorf("%s: %w", op, err)
 	}
-
-	selector, verifier, ok := splitToken(rawToken)
-	if !ok {
-		return 0, 0, fmt.Errorf("%s: malformed token", op)
-	}
-
-	verifierHash := hashVerifier(verifier)
-
-	link, err := s.pg.ConsumeMagicLink(ctx, verifierHash)
-	if err != nil {
-		return 0, 0, fmt.Errorf("%s: consume: %w", op, err)
-	}
-
-	// Сверка selector — быстрый lookup уже сделан по хешу verifier'а в SQL,
-	// но привязку к конкретной pending-сессии проверяем явно, constant-time
-	// сравнение исключает лишний риск timing-атаки на строковое поле.
-	if link.SessionID != sessionID {
-		return 0, 0, fmt.Errorf("%s: session mismatch", op)
-	}
-	if link.UserID != pending.UserID || link.AppID != pending.AppID {
-		return 0, 0, fmt.Errorf("%s: pending session mismatch", op)
-	}
-	_ = selector // selector использован только для читаемости токена в письме
 
 	if err := s.redis.DeletePendingSession(ctx, sessionID); err != nil {
 		s.log.Warn("failed to delete pending session", slog.String("op", op), slog.Any("err", err))
@@ -143,6 +118,7 @@ func (s *TwoFactorAuthentificator) VerifyLogin(
 	return link.UserID, link.AppID, nil
 }
 
+// * RequestChallenge инициирует 2FA-челлендж после успешной проверки пароля на этапе логина.
 func (s *TwoFactorAuthentificator) RequestChallenge(
 	ctx context.Context,
 	user *models.User,
@@ -151,32 +127,35 @@ func (s *TwoFactorAuthentificator) RequestChallenge(
 ) (string, error) {
 	const op = "twoFactorAuth.Service.RequestChallenge"
 
-	sessionID, err := generateSessionID()
+	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
 	if err != nil {
-		return "", fmt.Errorf("%s: generate session id: %w", op, err)
-	}
-
-	session := models.PendingSession{
-		UserID: user.ID,
-		AppID:  appID,
-	}
-
-	if err := s.redis.SetPendingSession(ctx, sessionID, session, pendingSessionTTL); err != nil {
-		return "", fmt.Errorf("%s: set pending session: %w", op, err)
-	}
-
-	req := &models.SendMagicLinkRequest{
-		UserID: user.ID,
-		AppID:  appID,
-		Email:  user.Email,
-	}
-
-	if err := s.SendMagicLink(ctx, req, sessionID); err != nil {
-		s.log.Error("failed to send magic link", slog.String("op", op), slog.Any("err", err))
+		s.log.Error("failed to issue challenge", slog.String("op", op), slog.Any("err", err))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return sessionID, nil
+}
+
+// * VerifyForAction проверяет действующий magic-link код как подтверждение
+// чувствительного действия (например, disable 2FA для oauth-only
+// пользователя без пароля).
+func (s *TwoFactorAuthentificator) VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64) error {
+	const op = "twoFactorAuth.Service.VerifyForAction"
+
+	link, err := s.verifyToken(ctx, sessionID, rawToken)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if link.UserID != expectedUserID {
+		return fmt.Errorf("%s: user mismatch", op)
+	}
+
+	if err := s.redis.DeletePendingSession(ctx, sessionID); err != nil {
+		s.log.Warn("failed to delete pending session", slog.String("op", op), slog.Any("err", err))
+	}
+
+	return nil
 }
 
 func (s *TwoFactorAuthentificator) CleanupExpired(ctx context.Context) (int, error) {
@@ -206,6 +185,90 @@ func generateSelectorVerifier() (selector, verifier string, err error) {
 	return base64.RawURLEncoding.EncodeToString(selBytes),
 		base64.RawURLEncoding.EncodeToString(verBytes),
 		nil
+}
+
+// * RequestActionConfirmation отправляет magic-link код уже залогиненному
+// пользователю для подтверждения чувствительного действия (например, disable
+// 2FA у oauth-only пользователя без пароля).
+func (s *TwoFactorAuthentificator) RequestActionConfirmation(
+	ctx context.Context,
+	user *models.User,
+	appID int32,
+	pendingSessionTTL time.Duration,
+) (string, error) {
+	const op = "twoFactorAuth.Service.RequestActionConfirmation"
+
+	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
+	if err != nil {
+		s.log.Error("failed to issue action confirmation",
+			slog.String("op", op),
+			slog.Any("err", err),
+		)
+
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return sessionID, nil
+}
+
+// * issueMagicLink — общее ядро для запроса magic-link кода.
+func (s *TwoFactorAuthentificator) issueMagicLink(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error) {
+	sessionID, err = generateSessionID()
+	if err != nil {
+		return "", fmt.Errorf("generate session id: %w", err)
+	}
+
+	session := models.PendingSession{
+		UserID: user.ID,
+		AppID:  appID,
+	}
+
+	if err := s.redis.SetPendingSession(ctx, sessionID, session, pendingSessionTTL); err != nil {
+		return "", fmt.Errorf("set pending session: %w", err)
+	}
+
+	req := &models.SendMagicLinkRequest{
+		UserID: user.ID,
+		AppID:  appID,
+		Email:  user.Email,
+	}
+
+	if err := s.SendMagicLink(ctx, req, sessionID); err != nil {
+		return "", fmt.Errorf("send magic link: %w", err)
+	}
+
+	return sessionID, nil
+}
+
+// * verifyToken — общее ядро проверки magic-link токена.
+func (s *TwoFactorAuthentificator) verifyToken(ctx context.Context, sessionID, rawToken string) (*models.MagicLink, error) {
+	const op = "twoFactorAuth.Service.verifyToken"
+
+	pending, err := s.redis.GetPendingSession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: pending session: %w", op, err)
+	}
+
+	_, verifier, ok := splitToken(rawToken)
+	if !ok {
+		return nil, fmt.Errorf("%s: malformed token", op)
+	}
+
+	verifierHash := hashVerifier(verifier)
+
+	link, err := s.pg.ConsumeMagicLink(ctx, verifierHash)
+	if err != nil {
+		return nil, fmt.Errorf("%s: consume: %w", op, err)
+	}
+
+	if link.SessionID != sessionID {
+		return nil, fmt.Errorf("%s: session mismatch", op)
+	}
+	if link.UserID != pending.UserID || link.AppID != pending.AppID {
+		return nil, fmt.Errorf("%s: pending session mismatch", op)
+	}
+
+	return link, nil
 }
 
 func splitToken(raw string) (selector, verifier string, ok bool) {

@@ -25,19 +25,26 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrInvalidAppID       = errors.New("invalid app id")
-	ErrEmailNotVerified   = errors.New("email not verified")
-	ErrResetTokenExpired  = errors.New("reset token expired")
-	ErrResetTokenUsed     = errors.New("reset token already used")
-	ErrSamePassword       = errors.New("new password is the same as the old one")
+
+	ErrEmailNotVerified = errors.New("email not verified")
+
+	ErrResetTokenExpired = errors.New("reset token expired")
+	ErrResetTokenUsed    = errors.New("reset token already used")
+
+	ErrSamePassword = errors.New("new password is the same as the old one")
+
+	ErrNoAuthFactorAvailable = errors.New("no password or linked oauth account to enable 2fa")
+	ErrTwoFAAlreadyEnabled   = errors.New("2fa already enabled")
+	ErrTwoFANotEnabled       = errors.New("2fa is not enabled")
+	ErrDisableConfirmation   = errors.New("invalid confirmation")
 )
 
 type Auth struct {
-	Log                 *slog.Logger
-	UsrSaver            UserSaver
-	UsrProvider         UserProvider
-	AppProvider         AppProvider
-	TwoFAStatusProvider TwoFAStatusProvider
-	TwoFAChallenger     TwoFAChallenger
+	Log         *slog.Logger
+	UsrSaver    UserSaver
+	UsrProvider UserProvider
+	AppProvider AppProvider
+	TwoFA       TwoFAService
 
 	tokenTTL   time.Duration
 	refreshTTL time.Duration
@@ -74,18 +81,24 @@ type UserProvider interface {
 
 	SetEmailVerified(ctx context.Context, uid int64) error
 	CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error)
+
+	TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error)
+	EnableMagicLink2FA(ctx context.Context, userID int64) error
+	DisableMagicLink2FA(ctx context.Context, userID int64) error
+
+	HasOAuthAccounts(ctx context.Context, userID int64) (bool, error)
 }
 
 type AppProvider interface {
 	App(ctx context.Context, appID int32) (*models.App, error)
 }
 
-type TwoFAStatusProvider interface {
-	TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error)
-}
+type TwoFAService interface {
+	RequestChallenge(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error)
+	RequestActionConfirmation(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error)
 
-type TwoFAChallenger interface {
-	RequestChallenge(ctx context.Context, user *models.User, appID int32) (sessionID string, err error)
+	VerifyLogin(ctx context.Context, sessionID, rawToken string) (userID int64, appID int32, err error)
+	VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64) error
 }
 
 func New(
@@ -93,12 +106,14 @@ func New(
 	userSaver UserSaver,
 	userProvider UserProvider,
 	appProvider AppProvider,
+	twoFAService TwoFAService,
 	jwtTTL, refreshTTL, resetTTL time.Duration,
 ) *Auth {
 	return &Auth{
 		UsrSaver:    userSaver,
 		UsrProvider: userProvider,
 		AppProvider: appProvider,
+		TwoFA:       twoFAService,
 		Log:         log,
 		tokenTTL:    jwtTTL,
 		refreshTTL:  refreshTTL,
@@ -111,6 +126,7 @@ func (a *Auth) Login(
 	ctx context.Context,
 	email, password string,
 	appID int32,
+	pendingSessionTTL time.Duration,
 ) (*LoginResult, error) {
 	const op = "Auth.Login"
 
@@ -141,14 +157,14 @@ func (a *Auth) Login(
 		return nil, ErrInvalidAppID
 	}
 
-	status, err := a.TwoFAStatusProvider.TwoFAStatus(ctx, user.ID)
+	status, err := a.UsrProvider.TwoFAStatus(ctx, user.ID)
 	if err != nil {
 		log.Error("failed to get 2fa status", sl.Err(err))
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	if status.IsEnabled {
-		sessionID, err := a.TwoFAChallenger.RequestChallenge(ctx, user, app.ID)
+		sessionID, err := a.TwoFA.RequestChallenge(ctx, user, app.ID, pendingSessionTTL)
 		if err != nil {
 			log.Error("failed to request 2fa challenge", sl.Err(err))
 			return nil, fmt.Errorf("%s: %w", op, err)
@@ -450,7 +466,128 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 	return nil
 }
 
-// issueTokens генерирует access и refresh токены и сохраняет refresh в БД.
+// * VerifyMagicLink подтверждает второй фактор и выдаёт токены.
+func (a *Auth) VerifyMagicLink(ctx context.Context, sessionID, rawToken string) (accessToken, refreshToken string, err error) {
+	const op = "Auth.VerifyMagicLink"
+
+	log := a.Log.With(slog.String("op", op))
+
+	userID, appID, err := a.TwoFA.VerifyLogin(ctx, sessionID, rawToken)
+	if err != nil {
+		log.Warn("magic link verification failed", sl.Err(err))
+		return "", "", err
+	}
+
+	user, err := a.UsrProvider.UserByID(ctx, userID)
+	if err != nil {
+		log.Error("failed to get user after verification", sl.Err(err))
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	app, err := a.AppProvider.App(ctx, appID)
+	if err != nil {
+		log.Error("failed to get app after verification", sl.Err(err))
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return a.IssueTokens(ctx, user, app)
+}
+
+// * Enable2FA включает magic-link 2FA пользователю. Требует, чтобы у него уже
+// был рабочий фактор для будущего disable (пароль или хотя бы один
+// oauth-аккаунт) — иначе включение необратимо заблокирует доступ к аккаунту.
+func (a *Auth) Enable2FA(ctx context.Context, userID int64) error {
+	const op = "Auth.Enable2FA"
+
+	log := a.Log.With(slog.String("op", op))
+
+	status, err := a.UsrProvider.TwoFAStatus(ctx, userID)
+	if err != nil {
+		log.Error("failed to get 2fa status", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if status.IsEnabled {
+		return ErrTwoFAAlreadyEnabled
+	}
+
+	if !status.HasPassword {
+		hasOAuth, err := a.UsrProvider.HasOAuthAccounts(ctx, userID)
+		if err != nil {
+			log.Error("failed to check oauth accounts", sl.Err(err))
+			return fmt.Errorf("%s: %w", op, err)
+		}
+
+		if !hasOAuth {
+			return ErrNoAuthFactorAvailable
+		}
+	}
+
+	if err := a.UsrProvider.EnableMagicLink2FA(ctx, userID); err != nil {
+		log.Error("failed to enable 2fa", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("2fa enabled", slog.Int64("user_id", userID))
+
+	return nil
+}
+
+func (a *Auth) Disable2FA(
+	ctx context.Context,
+	userID int64,
+	password string,
+	sessionID, rawToken string,
+) error {
+	const op = "Auth.Disable2FA"
+
+	log := a.Log.With(slog.String("op", op))
+
+	status, err := a.UsrProvider.TwoFAStatus(ctx, userID)
+	if err != nil {
+		log.Error("failed to get 2fa status", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if !status.IsEnabled {
+		return ErrTwoFANotEnabled
+	}
+
+	switch {
+	case status.HasPassword:
+		user, err := a.UsrProvider.UserByID(ctx, userID)
+		if err != nil {
+			log.Error("failed to get user", sl.Err(err))
+			return fmt.Errorf("%s: %w", op, err)
+		}
+
+		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
+			log.Warn("disable 2fa: invalid password")
+			return ErrDisableConfirmation
+		}
+
+	default:
+		if sessionID == "" || rawToken == "" {
+			return ErrDisableConfirmation
+		}
+
+		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID); err != nil {
+			log.Warn("disable 2fa: invalid magic link confirmation", sl.Err(err))
+			return ErrDisableConfirmation
+		}
+	}
+
+	if err := a.UsrProvider.DisableMagicLink2FA(ctx, userID); err != nil {
+		log.Error("failed to disable 2fa", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("2fa disabled", slog.Int64("user_id", userID))
+
+	return nil
+}
+
+// * IssueTokens генерирует access и refresh токены и сохраняет refresh в БД.
 func (a *Auth) IssueTokens(ctx context.Context, user *models.User, app *models.App) (accessToken, refreshToken string, err error) {
 	accessToken, err = jwt.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {

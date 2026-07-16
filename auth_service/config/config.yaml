@@ -16,6 +16,7 @@ two_factor_auth:
   token_ttl: 10m
   token_secret: "123"
   redirect_url: "http://localhost:8082"
+  pending_session_ttl: 10m
 
 oauth:
   state_ttl: 5m

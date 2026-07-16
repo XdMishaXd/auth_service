@@ -47,9 +47,10 @@ type OAuthProviderConfig struct {
 }
 
 type TwoFactorAuth struct {
-	TokenTTL    time.Duration `yaml:"token_ttl" env-default:"10m"`
-	TokenSecret string        `yaml:"token_secret" env-required:"true"`
-	RedirectURL string        `yaml:"redirect_url" env-default:"http://localhost:8082"`
+	TokenTTL          time.Duration `yaml:"token_ttl" env-default:"10m"`
+	TokenSecret       string        `yaml:"token_secret" env-required:"true"`
+	RedirectURL       string        `yaml:"redirect_url" env-default:"http://localhost:8082"`
+	PendingSessionTTL time.Duration `yaml:"pending_session_ttl" env-default:"10m"`
 }
 
 type Postgres struct {

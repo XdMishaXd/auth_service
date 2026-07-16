@@ -71,6 +71,7 @@ func New(
 	validate *validator.Validate,
 	authMiddleware *auth.Auth,
 	handlerTimeout time.Duration,
+	pendingSessionTTL time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.login.New"
@@ -114,7 +115,7 @@ func New(
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
-		loginResult, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID)
+		loginResult, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID, pendingSessionTTL)
 		if err != nil {
 			switch {
 			case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
