@@ -95,7 +95,14 @@ type AppProvider interface {
 
 type TwoFAService interface {
 	RequestChallenge(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error)
-	RequestActionConfirmation(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error)
+	RequestActionConfirmation(
+		ctx context.Context,
+		userID int64,
+		appID int32,
+		pendingSessionTTL time.Duration,
+	) (string, error)
+
+	Resend(ctx context.Context, sessionID string) error
 
 	VerifyLogin(ctx context.Context, sessionID, rawToken string) (userID int64, appID int32, err error)
 	VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64) error

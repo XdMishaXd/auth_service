@@ -10,6 +10,7 @@ import (
 
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	emailParser "auth_service/internal/http_server/middleware/email_parser"
+	sessionIDParser "auth_service/internal/http_server/middleware/session_id_parser"
 	rateLimit "auth_service/internal/ratelimit"
 )
 
@@ -83,6 +84,30 @@ func (rl *RateLimit) OAuthUnlink() func(http.Handler) http.Handler {
 	return rl.byUserID("oauth_unlink", rateLimit.Policy{Burst: 5, Rate: 15, Period: time.Hour})
 }
 
+func (rl *RateLimit) MagicLinkResend() func(http.Handler) http.Handler {
+	ip := rl.byIP("2fa_magiclink_resend", rateLimit.Policy{Burst: 5, Rate: 10, Period: time.Hour})
+	session := rl.bySessionID("2fa_magiclink_resend", rateLimit.Policy{Burst: 1, Rate: 3, Period: 10 * time.Minute})
+	return chain(sessionIDParser.New, ip, session)
+}
+
+func (rl *RateLimit) MagicLinkVerify() func(http.Handler) http.Handler {
+	ip := rl.byIP("2fa_magiclink_verify", rateLimit.Policy{Burst: 10, Rate: 30, Period: time.Minute})
+	session := rl.bySessionID("2fa_magiclink_verify", rateLimit.Policy{Burst: 5, Rate: 5, Period: 10 * time.Minute})
+	return chain(sessionIDParser.New, ip, session)
+}
+
+func (rl *RateLimit) MagicLinkEnable() func(http.Handler) http.Handler {
+	return rl.byUserID("2fa_magiclink_enable", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
+func (rl *RateLimit) MagicLinkDisable() func(http.Handler) http.Handler {
+	return rl.byUserID("2fa_magiclink_disable", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
+func (rl *RateLimit) MagicLinkRequestActionConfirmation() func(http.Handler) http.Handler {
+	return rl.byUserID("2fa_magiclink_request_action", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
 func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
 		return "ip", stripPort(r.RemoteAddr) // RealIP уже подменил RemoteAddr выше по цепочке
@@ -92,6 +117,12 @@ func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Ha
 func (rl *RateLimit) byEmail(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
 		return "email", emailParser.FromContext(r.Context())
+	}, FailClosed)
+}
+
+func (rl *RateLimit) bySessionID(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
+	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
+		return "session_id", sessionIDParser.FromContext(r.Context())
 	}, FailClosed)
 }
 

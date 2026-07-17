@@ -98,6 +98,8 @@ func New(
 
 		log.Info("2fa verified, tokens issued")
 
+		// ? redirect
+
 		ResponseOK(w, r, accessToken, refreshToken)
 	}
 }

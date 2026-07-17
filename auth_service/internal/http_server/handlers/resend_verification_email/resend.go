@@ -1,4 +1,4 @@
-package resendEmail
+package resendVerification
 
 import (
 	"context"

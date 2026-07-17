@@ -18,6 +18,8 @@ type Publisher interface {
 }
 
 type PostgresRepo interface {
+	UserByID(ctx context.Context, id int64) (*models.User, error)
+
 	SaveMagicLink(ctx context.Context, link *models.MagicLink) error
 	ConsumeMagicLink(ctx context.Context, tokenHash []byte) (*models.MagicLink, error)
 	InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error)
@@ -192,11 +194,16 @@ func generateSelectorVerifier() (selector, verifier string, err error) {
 // 2FA у oauth-only пользователя без пароля).
 func (s *TwoFactorAuthentificator) RequestActionConfirmation(
 	ctx context.Context,
-	user *models.User,
+	userID int64,
 	appID int32,
 	pendingSessionTTL time.Duration,
 ) (string, error) {
 	const op = "twoFactorAuth.Service.RequestActionConfirmation"
+
+	user, err := s.pg.UserByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("%s: get user: %w", op, err)
+	}
 
 	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
 	if err != nil {
@@ -211,8 +218,44 @@ func (s *TwoFactorAuthentificator) RequestActionConfirmation(
 	return sessionID, nil
 }
 
+// * Resend инвалидирует предыдущую активную ссылку и высылает новую в рамках той же pending-сессии.
+func (s *TwoFactorAuthentificator) Resend(ctx context.Context, sessionID string) error {
+	const op = "twoFactorAuth.Service.Resend"
+
+	pending, err := s.redis.GetPendingSession(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("%s: pending session: %w", op, err)
+	}
+
+	if _, err := s.pg.InvalidateMagicLinksByUserID(ctx, pending.UserID); err != nil {
+		return fmt.Errorf("%s: invalidate previous: %w", op, err)
+	}
+
+	user, err := s.pg.UserByID(ctx, pending.UserID)
+	if err != nil {
+		return fmt.Errorf("%s: get user: %w", op, err)
+	}
+
+	req := &models.SendMagicLinkRequest{
+		UserID: pending.UserID,
+		AppID:  pending.AppID,
+		Email:  user.Email,
+	}
+
+	if err := s.SendMagicLink(ctx, req, sessionID); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
 // * issueMagicLink — общее ядро для запроса magic-link кода.
-func (s *TwoFactorAuthentificator) issueMagicLink(ctx context.Context, user *models.User, appID int32, pendingSessionTTL time.Duration) (sessionID string, err error) {
+func (s *TwoFactorAuthentificator) issueMagicLink(
+	ctx context.Context,
+	user *models.User,
+	appID int32,
+	pendingSessionTTL time.Duration,
+) (sessionID string, err error) {
 	sessionID, err = generateSessionID()
 	if err != nil {
 		return "", fmt.Errorf("generate session id: %w", err)

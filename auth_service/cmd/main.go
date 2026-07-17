@@ -15,6 +15,11 @@ import (
 	"auth_service/internal/auth/oauth"
 	"auth_service/internal/auth/oauth/providers"
 	"auth_service/internal/config"
+	"auth_service/internal/http_server/handlers/2fa/disable"
+	"auth_service/internal/http_server/handlers/2fa/enable"
+	requestAction "auth_service/internal/http_server/handlers/2fa/request_action_confirmation"
+	resendMagicLink "auth_service/internal/http_server/handlers/2fa/resend_magic_link"
+	verifyMagicLink "auth_service/internal/http_server/handlers/2fa/verify_magic_link"
 	"auth_service/internal/http_server/handlers/health"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
@@ -27,7 +32,7 @@ import (
 	"auth_service/internal/http_server/handlers/password/reset"
 	"auth_service/internal/http_server/handlers/refresh"
 	register "auth_service/internal/http_server/handlers/register"
-	resendEmail "auth_service/internal/http_server/handlers/resend_verification_email"
+	resendVerification "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
@@ -306,7 +311,7 @@ func setupRouter(
 			),
 		)
 		r.With(rateLimiter.ResendVerificationEmail()).Post("/verify/resend",
-			resendEmail.New(
+			resendVerification.New(
 				log,
 				validate,
 				authService,
@@ -373,6 +378,45 @@ func setupRouter(
 				)
 				r.With(rateLimiter.OAuthUnlink()).Delete("/{provider}",
 					unlink.New(log, oauthService, cfg.HTTPServer.HandlersTimeout),
+				)
+			})
+		})
+
+		r.Route("/2fa/magic-link", func(r chi.Router) {
+			r.With(rateLimiter.MagicLinkVerify()).Post("/verify",
+				verifyMagicLink.New(
+					log,
+					validate,
+					authService,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+			r.With(rateLimiter.MagicLinkResend()).Post("/resend",
+				resendMagicLink.New(
+					log,
+					validate,
+					authService,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+
+			// Authenticated — требуют access-токен.
+			r.Group(func(r chi.Router) {
+				r.Use(claimsParser.RequireAuth(appProvider))
+
+				r.With(rateLimiter.MagicLinkEnable()).Post("/enable",
+					enable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
+				)
+				r.With(rateLimiter.MagicLinkDisable()).Post("/disable",
+					disable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
+				)
+				r.With(rateLimiter.MagicLinkRequestActionConfirmation()).Post("/request-action-confirmation",
+					requestAction.New(
+						log,
+						authService,
+						cfg.HTTPServer.HandlersTimeout,
+						cfg.TwoFactorAuth.PendingSessionTTL,
+					),
 				)
 			})
 		})
