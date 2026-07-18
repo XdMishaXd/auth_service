@@ -247,8 +247,9 @@ func (r *PostgresRepo) ResetPassword(
 	}
 
 	const invalidateMagicLinksQuery = `
-    UPDATE magic_links SET used = TRUE, used_at = NOW()
-    WHERE user_id = $1 AND used = FALSE
+    UPDATE magic_links
+		SET used_at = NOW()
+		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
   `
 	if _, err := tx.Exec(ctx, invalidateMagicLinksQuery, userID); err != nil {
 		return fmt.Errorf("%s: invalidate magic links: %w", op, err)

@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
+	twoFactorAuth "auth_service/internal/auth/2fa"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/storage"
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/render"
@@ -33,7 +35,7 @@ type Response struct {
 // @Description  письма в связке с session_id, полученным на этапе /auth/login,
 // @Description  и при успехе выдаёт access/refresh токены. Токен одноразовый —
 // @Description  повторное использование того же токена или session_id отклоняется.
-// @Tags         auth
+// @Tags         2fa
 // @Accept       json
 // @Produce      json
 // @Param        request  body  object{session_id=string,token=string}  true  "Данные для подтверждения"  example({"session_id": "abcDEF123...", "token": "sel123.ver456..."})
@@ -41,7 +43,7 @@ type Response struct {
 // @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса или ошибка валидации"  example({"status": "error", "error": "field Token is required"})
 // @Failure      401  {object}  object{status=string,error=string}  "Токен невалиден, истёк, уже использован, либо сессия истекла"  example({"status": "error", "error": "invalid or expired confirmation"})
 // @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
-// @Router       /auth/2fa/magic-link/verify [get]
+// @Router       /auth/2fa/magic-link/verify [post]
 func New(
 	log *slog.Logger,
 	validate *validator.Validate,
@@ -90,9 +92,22 @@ func New(
 
 		accessToken, refreshToken, err := authMiddleware.VerifyMagicLink(ctx, req.SessionID, req.Token)
 		if err != nil {
-			log.Warn("magic link verification failed", sl.Err(err))
-			render.Status(r, http.StatusUnauthorized)
-			render.JSON(w, r, resp.Error("invalid or expired confirmation"))
+			switch {
+			case errors.Is(err, twoFactorAuth.ErrMagicLinkVerificationFailed),
+				errors.Is(err, storage.ErrPendingSessionNotFound):
+				log.Warn("magic link verification failed", sl.Err(err))
+
+				render.Status(r, http.StatusUnauthorized)
+				render.JSON(w, r, resp.Error("invalid or expired confirmation"))
+
+				return
+			}
+
+			log.Error("magic link verification: internal error", sl.Err(err))
+
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("Internal error"))
+
 			return
 		}
 

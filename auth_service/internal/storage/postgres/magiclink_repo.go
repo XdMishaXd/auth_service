@@ -16,13 +16,13 @@ func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink
 	const op = "storage.postgres.SaveMagicLink"
 
 	query := `
-		NSERT INTO magic_links (
+		INSERT INTO magic_links (
 			user_id, 
 			app_id, 
 			token_hash, 
 			session_id, 
 			expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		) VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at
 	`
 
@@ -52,7 +52,7 @@ func (r *PostgresRepo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (
 		WHERE token_hash = $1
 			AND used_at IS NULL
 			AND expires_at > NOW()
-		RETURNING id, user_id, app_id, token_hash, session_id, ip_address, user_agent, used_at, expires_at, created_at
+		RETURNING id, user_id, app_id, token_hash, session_id, used_at, expires_at, created_at
 	`
 
 	link := &models.MagicLink{}

@@ -27,7 +27,7 @@ type Response struct {
 // @Description  чтобы у пользователя уже был рабочий фактор для будущего
 // @Description  отключения (пароль или хотя бы один привязанный oauth-аккаунт) —
 // @Description  иначе включение необратимо заблокирует доступ к аккаунту.
-// @Tags         auth
+// @Tags         2fa
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200  {object}  object{status=string}  "2FA включена"  example({"status": "ok"})

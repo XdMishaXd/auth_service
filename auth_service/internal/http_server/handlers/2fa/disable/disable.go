@@ -32,7 +32,7 @@ type Request struct {
 // @Description  ли у пользователя пароль: если да — передаётся password; если
 // @Description  нет (oauth-only аккаунт) — передаются session_id и token,
 // @Description  полученные через /auth/2fa/magic-link/request-action-confirmation.
-// @Tags         auth
+// @Tags         2fa
 // @Security     BearerAuth
 // @Accept       json
 // @Produce      json

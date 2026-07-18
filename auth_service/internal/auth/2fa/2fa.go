@@ -5,13 +5,17 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"auth_service/internal/config"
 	"auth_service/internal/models"
+	"auth_service/internal/storage"
 )
+
+var ErrMagicLinkVerificationFailed = errors.New("lagic link verification failed")
 
 type Publisher interface {
 	SendMessage(ctx context.Context, msg models.Message) error
@@ -83,7 +87,7 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 	}
 
 	rawToken := selector + "." + verifier
-	magicLinkURL := fmt.Sprintf("%s/auth/2fa/verify-link#token=%s", s.redirectURL, rawToken)
+	magicLinkURL := fmt.Sprintf("/auth/2fa/magic-link/verify#token=%s", rawToken)
 
 	msg := models.Message{
 		Email:   req.Email,
@@ -105,11 +109,18 @@ func (s *TwoFactorAuthentificator) SendMagicLink(ctx context.Context, req *model
 }
 
 // * VerifyLogin проверяет токен в рамках логина и завершает pending-сессию.
-func (s *TwoFactorAuthentificator) VerifyLogin(ctx context.Context, sessionID, rawToken string) (userID int64, appID int32, err error) {
+func (s *TwoFactorAuthentificator) VerifyLogin(
+	ctx context.Context,
+	sessionID, rawToken string,
+) (userID int64, appID int32, err error) {
 	const op = "twoFactorAuth.Service.VerifyLogin"
 
 	link, err := s.verifyToken(ctx, sessionID, rawToken)
 	if err != nil {
+		if errors.Is(err, ErrMagicLinkVerificationFailed) || errors.Is(err, storage.ErrMagicLinkNotFound) {
+			return 0, 0, err
+		}
+
 		return 0, 0, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -131,7 +142,6 @@ func (s *TwoFactorAuthentificator) RequestChallenge(
 
 	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
 	if err != nil {
-		s.log.Error("failed to issue challenge", slog.String("op", op), slog.Any("err", err))
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -289,26 +299,34 @@ func (s *TwoFactorAuthentificator) verifyToken(ctx context.Context, sessionID, r
 
 	pending, err := s.redis.GetPendingSession(ctx, sessionID)
 	if err != nil {
+		if errors.Is(err, storage.ErrPendingSessionNotFound) {
+			return nil, fmt.Errorf("%s: %w", op, storage.ErrPendingSessionNotFound)
+		}
+
 		return nil, fmt.Errorf("%s: pending session: %w", op, err)
 	}
 
 	_, verifier, ok := splitToken(rawToken)
 	if !ok {
-		return nil, fmt.Errorf("%s: malformed token", op)
+		return nil, fmt.Errorf("%s: malformed token: %w", op, ErrMagicLinkVerificationFailed)
 	}
 
 	verifierHash := hashVerifier(verifier)
 
 	link, err := s.pg.ConsumeMagicLink(ctx, verifierHash)
 	if err != nil {
+		if errors.Is(err, storage.ErrMagicLinkNotFound) {
+			return nil, fmt.Errorf("%s: %w", op, ErrMagicLinkVerificationFailed)
+		}
+
 		return nil, fmt.Errorf("%s: consume: %w", op, err)
 	}
 
 	if link.SessionID != sessionID {
-		return nil, fmt.Errorf("%s: session mismatch", op)
+		return nil, fmt.Errorf("%s: session mismatch: %w", op, ErrMagicLinkVerificationFailed)
 	}
 	if link.UserID != pending.UserID || link.AppID != pending.AppID {
-		return nil, fmt.Errorf("%s: pending session mismatch", op)
+		return nil, fmt.Errorf("%s: pending session mismatch: %w", op, ErrMagicLinkVerificationFailed)
 	}
 
 	return link, nil

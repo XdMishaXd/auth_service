@@ -31,7 +31,7 @@ type Response struct {
 // @Description  рамках той же pending-сессии, начатой на /auth/login. Не
 // @Description  подтверждает и не раскрывает факт доставки письма — ответ
 // @Description  одинаковый независимо от того, дошло письмо или нет.
-// @Tags         auth
+// @Tags         2fa
 // @Accept       json
 // @Produce      json
 // @Param        request  body  object{session_id=string}  true  "Идентификатор pending-сессии"  example({"session_id": "abcDEF123..."})

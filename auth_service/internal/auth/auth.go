@@ -477,23 +477,18 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 func (a *Auth) VerifyMagicLink(ctx context.Context, sessionID, rawToken string) (accessToken, refreshToken string, err error) {
 	const op = "Auth.VerifyMagicLink"
 
-	log := a.Log.With(slog.String("op", op))
-
 	userID, appID, err := a.TwoFA.VerifyLogin(ctx, sessionID, rawToken)
 	if err != nil {
-		log.Warn("magic link verification failed", sl.Err(err))
 		return "", "", err
 	}
 
 	user, err := a.UsrProvider.UserByID(ctx, userID)
 	if err != nil {
-		log.Error("failed to get user after verification", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	app, err := a.AppProvider.App(ctx, appID)
 	if err != nil {
-		log.Error("failed to get app after verification", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 

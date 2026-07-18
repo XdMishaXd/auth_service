@@ -18,6 +18,10 @@ import (
 	"github.com/go-chi/render"
 )
 
+type Response struct {
+	resp.Response
+}
+
 // New godoc
 // @Summary      Unlink OAuth provider from account
 // @Description  Removes the link between the given OAuth provider and the
@@ -31,7 +35,7 @@ import (
 // @Failure      403  {object}  object{status=string,error=string}  "Нельзя отвязать последний метод аутентификации"  example({"status": "error", "error": "cannot unlink last authentication method"})
 // @Failure      404  {object}  object{status=string,error=string}  "OAuth-аккаунт с таким provider не найден у пользователя"  example({"status": "error", "error": "oauth account not found"})
 // @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
-// @Router       /auth/oauth/{provider}/unlink [delete]
+// @Router       /auth/oauth/{provider} [delete]
 func New(
 	log *slog.Logger,
 	authService *oauth.OAuthService,
@@ -68,7 +72,8 @@ func New(
 			return
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		render.Status(r, http.StatusNoContent)
+		ResponseOK(w, r)
 	}
 }
 
@@ -81,4 +86,10 @@ func mapUnlinkError(err error) (int, string) {
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}
+}
+
+func ResponseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, Response{
+		Response: resp.OK(),
+	})
 }

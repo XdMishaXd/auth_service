@@ -54,13 +54,326 @@ info:
   title: Auth Service API
   version: "1.0"
 paths:
+  /auth/2fa/magic-link/disable:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Отключает magic-link 2FA. Подтверждение зависит от того, есть
+        ли у пользователя пароль: если да — передаётся password; если
+        нет (oauth-only аккаунт) — передаются session_id и token,
+        полученные через /auth/2fa/magic-link/request-action-confirmation.
+      parameters:
+      - description: Подтверждение отключения (один из наборов полей)
+        in: body
+        name: request
+        schema:
+          properties:
+            password:
+              type: string
+            session_id:
+              type: string
+            token:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '2FA отключена"  example({"status": "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк, либо неверное
+            подтверждение (пароль/magic-link код)"  example({"status": "error", "error":
+            "invalid confirmation"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "409":
+          description: '2FA не включена"  example({"status": "error", "error": "2fa
+            is not enabled"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Отключить magic-link 2FA
+      tags:
+      - 2fa
+  /auth/2fa/magic-link/enable:
+    post:
+      description: |-
+        Включает magic-link 2FA для текущего пользователя. Требует,
+        чтобы у пользователя уже был рабочий фактор для будущего
+        отключения (пароль или хотя бы один привязанный oauth-аккаунт) —
+        иначе включение необратимо заблокирует доступ к аккаунту.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '2FA включена"  example({"status": "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "409":
+          description: '2FA уже включена, либо нет ни одного доступного фактора для
+            будущего disable"  example({"status": "error", "error": "no password or
+            linked oauth account to enable 2fa"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Включить magic-link 2FA
+      tags:
+      - 2fa
+  /auth/2fa/magic-link/request-action-confirmation:
+    post:
+      description: |-
+        Отправляет magic-link код на email текущего пользователя для
+        подтверждения чувствительного действия (например, отключения
+        2FA у oauth-only пользователя без пароля). Возвращает
+        session_id, который затем передаётся вместе с кодом из письма
+        в соответствующий эндпоинт действия (например, /disable).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
+            "abcDEF123..."})'
+          schema:
+            properties:
+              session_id:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запросить подтверждение действия через magic link
+      tags:
+      - 2fa
+  /auth/2fa/magic-link/resend:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Инвалидирует предыдущую активную ссылку и высылает новую в
+        рамках той же pending-сессии, начатой на /auth/login. Не
+        подтверждает и не раскрывает факт доставки письма — ответ
+        одинаковый независимо от того, дошло письмо или нет.
+      parameters:
+      - description: Идентификатор pending-сессии
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            session_id:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Новая ссылка отправлена (либо попытка предпринята)"  example({"status":
+            "ok"})'
+          schema:
+            properties:
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Невалидное тело запроса"  example({"status": "error", "error":
+            "field SessionID is required"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Pending-сессия не найдена или истекла — нужно начать логин
+            заново"  example({"status": "error", "error": "session expired, please
+            log in again"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "429":
+          description: 'Слишком частые запросы на повторную отправку"  example({"status":
+            "error", "error": "rate limit exceeded"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Повторно отправить magic-link
+      tags:
+      - 2fa
+  /auth/2fa/magic-link/verify:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Завершает второй фактор аутентификации: проверяет токен из
+        письма в связке с session_id, полученным на этапе /auth/login,
+        и при успехе выдаёт access/refresh токены. Токен одноразовый —
+        повторное использование того же токена или session_id отклоняется.
+      parameters:
+      - description: Данные для подтверждения
+        in: body
+        name: request
+        required: true
+        schema:
+          properties:
+            session_id:
+              type: string
+            token:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '2FA подтверждена, выданы токены"  example({"status": "ok",
+            "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          schema:
+            properties:
+              access_token:
+                type: string
+              refresh_token:
+                type: string
+              status:
+                type: string
+            type: object
+        "400":
+          description: 'Невалидное тело запроса или ошибка валидации"  example({"status":
+            "error", "error": "field Token is required"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Токен невалиден, истёк, уже использован, либо сессия истекла"  example({"status":
+            "error", "error": "invalid or expired confirmation"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Подтверждение magic-link 2FA
+      tags:
+      - 2fa
   /auth/login:
     post:
       consumes:
       - application/json
       description: |-
         ## Описание
-        Выполняет аутентификацию пользователя по email и паролю, возвращает пару токенов (access и refresh).
+        Выполняет аутентификацию пользователя по email и паролю. Если
+        у пользователя включена magic-link 2FA, вместо токенов
+        возвращается session_id для подтверждения через
+        /auth/2fa/magic-link/verify; access/refresh в этом случае не выдаются.
 
         ### Процесс аутентификации:
         1. Валидация входных данных (email формат, наличие пароля)
@@ -68,17 +381,19 @@ paths:
         3. Верификация пароля (bcrypt hash comparison)
         4. Проверка статуса email (должен быть подтвержден)
         5. Валидация app_id (приложение должно существовать)
-        6. Генерация JWT токенов (access и refresh)
+        6. Проверка статуса 2FA:
+        - если выключена — генерация JWT токенов (access и refresh)
+        - если включена — создание pending-сессии, отправка magic link на email, возврат session_id без токенов
 
         ### Токены:
         - **Access Token**: JWT токен для доступа к защищенным ресурсам (TTL: 15 минут)
         - **Refresh Token**: JWT токен для обновления access токена (TTL: 30 дней)
+        - **Session ID** (при включённой 2FA): используется для подтверждения через /auth/2fa/magic-link/verify, не является токеном доступа
 
         ### Коды ошибок:
-        - `400` - Некорректные данные (невалидный email, отсутствие полей)
-        - `401` - Неверные credentials (пароль не совпадает)
+        - `400` - Некорректные данные (невалидный email, отсутствие полей, невалидный app_id)
+        - `401` - Неверные credentials (пароль не совпадает; используется и для несуществующего email — не различается намеренно, во избежание user enumeration)
         - `403` - Email не подтвержден
-        - `404` - Пользователь или приложение не найдены
         - `500` - Внутренняя ошибка сервера
       parameters:
       - description: Данные для входа
@@ -98,20 +413,20 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Успешная аутентификация"  example({"status": "ok", "access_token":
-            "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          description: 'Пароль верен, требуется подтверждение magic-link 2FA"  example({"status":
+            "ok", "two_factor_pending": true, "session_id": "abcDEF123..."})'
           schema:
             properties:
-              access_token:
-                type: string
-              refresh_token:
+              session_id:
                 type: string
               status:
                 type: string
+              two_factor_pending:
+                type: boolean
             type: object
         "400":
-          description: 'Ошибка валидации"  example({"status": "error", "error": "Invalid
-            email format"})'
+          description: 'Ошибка валидации или невалидный app_id"  example({"status":
+            "error", "error": "Invalid app id"})'
           schema:
             properties:
               error:
@@ -131,17 +446,7 @@ paths:
             type: object
         "403":
           description: 'Email не подтвержден"  example({"status": "error", "error":
-            "Email is not verified"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "404":
-          description: 'Пользователь не найден"  example({"status": "error", "error":
-            "User not found"})'
+            "email is not verified"})'
           schema:
             properties:
               error:
@@ -242,6 +547,66 @@ paths:
       tags:
       - auth
       x-order: 4
+  /auth/oauth/{provider}:
+    delete:
+      description: |-
+        Removes the link between the given OAuth provider and the
+        currently authenticated user. Fails if this is the user's
+        last remaining authentication method, to prevent account lockout.
+      parameters:
+      - description: OAuth provider name (e.g. google, github)
+        in: path
+        name: provider
+        required: true
+        type: string
+      responses:
+        "204":
+          description: Провайдер успешно отвязан
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "403":
+          description: 'Нельзя отвязать последний метод аутентификации"  example({"status":
+            "error", "error": "cannot unlink last authentication method"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "404":
+          description: 'OAuth-аккаунт с таким provider не найден у пользователя"  example({"status":
+            "error", "error": "oauth account not found"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Unlink OAuth provider from account
+      tags:
+      - oauth
   /auth/oauth/{provider}/callback:
     get:
       description: |-
@@ -466,66 +831,6 @@ paths:
                 type: string
             type: object
       summary: Initiate OAuth login
-      tags:
-      - oauth
-  /auth/oauth/{provider}/unlink:
-    delete:
-      description: |-
-        Removes the link between the given OAuth provider and the
-        currently authenticated user. Fails if this is the user's
-        last remaining authentication method, to prevent account lockout.
-      parameters:
-      - description: OAuth provider name (e.g. google, github)
-        in: path
-        name: provider
-        required: true
-        type: string
-      responses:
-        "204":
-          description: Провайдер успешно отвязан
-        "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "403":
-          description: 'Нельзя отвязать последний метод аутентификации"  example({"status":
-            "error", "error": "cannot unlink last authentication method"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "404":
-          description: 'OAuth-аккаунт с таким provider не найден у пользователя"  example({"status":
-            "error", "error": "oauth account not found"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Unlink OAuth provider from account
       tags:
       - oauth
   /auth/oauth/accounts:

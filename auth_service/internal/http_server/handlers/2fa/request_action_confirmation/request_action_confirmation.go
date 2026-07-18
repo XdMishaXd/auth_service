@@ -27,7 +27,7 @@ type Response struct {
 // @Description  2FA у oauth-only пользователя без пароля). Возвращает
 // @Description  session_id, который затем передаётся вместе с кодом из письма
 // @Description  в соответствующий эндпоинт действия (например, /disable).
-// @Tags         auth
+// @Tags         2fa
 // @Security     BearerAuth
 // @Produce      json
 // @Success      200  {object}  object{status=string,session_id=string}  "Код отправлен на email"  example({"status": "ok", "session_id": "abcDEF123..."})
