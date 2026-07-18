@@ -70,7 +70,7 @@ services:
     networks: [backend]
   auth_service:
     build:
-      context: ./auth_service
+      context: ./auth_service/docker
       dockerfile: Dockerfile
     ports:
       - "8082:8082"
@@ -97,7 +97,7 @@ services:
     networks: [backend, frontend]
   mail_sender:
     build:
-      context: ./email_sender
+      context: ./email_sender/docker
       dockerfile: Dockerfile
     container_name: email_sender
     restart: unless-stopped

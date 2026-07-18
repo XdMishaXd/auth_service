@@ -8,7 +8,7 @@ import (
 )
 
 type Config struct {
-	Env           string `yaml:"env" env:"APP_ENV" env-default:"local"`
+	Env           string `yaml:"env" env-default:"local"`
 	Tokens        `yaml:"tokens"`
 	RabbitMQ      `yaml:"rabbitmq"`
 	Postgres      `yaml:"postgres"`
@@ -22,19 +22,19 @@ type Config struct {
 type Swagger struct {
 	Username string `yaml:"username" env:"SWAGGER_USERNAME" env-default:"admin"`
 	Password string `yaml:"password" env:"SWAGGER_PASSWORD" env-default:"admin"`
-	Enabled  bool   `yaml:"enabled" env:"SWAGGER_ENABLED" env-default:"false"`
+	Enabled  bool   `yaml:"enabled" env-default:"false"`
 }
 
 type HTTPServer struct {
-	Address         string        `yaml:"address" env:"HTTP_ADDRESS" env-default:"localhost:8080"`
-	Timeout         time.Duration `yaml:"timeout" env:"HTTP_TIMEOUT" env-default:"4s"`
-	IdleTimeout     time.Duration `yaml:"idle_timeout" env:"HTTP_IDLE_TIMEOUT" env-default:"60s"`
-	HandlersTimeout time.Duration `yaml:"handlers_timeout" env:"HTTP_HANDLERS_TIMEOUT" env-default:"5s"`
+	Address         string        `yaml:"address" env-default:"localhost:8080"`
+	Timeout         time.Duration `yaml:"timeout" env-default:"4s"`
+	IdleTimeout     time.Duration `yaml:"idle_timeout" env-default:"60s"`
+	HandlersTimeout time.Duration `yaml:"handlers_timeout" env-default:"5s"`
 }
 
 type OAuth struct {
-	StateTTL             time.Duration `yaml:"state_ttl" env:"OAUTH_STATE_TTL" env-default:"5m"`
-	HandlersTimeout      time.Duration `yaml:"handlers_timeout" env:"OAUTH_HANDLERS_TIMEOUT" env-default:"10s"`
+	StateTTL             time.Duration `yaml:"state_ttl" env-default:"5m"`
+	HandlersTimeout      time.Duration `yaml:"handlers_timeout" env-default:"10s"`
 	AllowedRedirectHosts []string      `yaml:"allowed_redirect_hosts" env-default:"localhost"`
 
 	GoogleClientID     string `yaml:"-" env:"GOOGLE_CLIENT_ID" env-required:"true"`
