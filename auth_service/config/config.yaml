@@ -1,8 +1,6 @@
-env: "local" # local, dev, prod
+env: "prod"
 
 swagger:
-  username: "admin"
-  password: "admin"
   enabled: true
 
 tokens:
@@ -10,31 +8,17 @@ tokens:
   refresh_token_ttl: 168h
   verification_token_ttl: 15m
   reset_token_ttl: 15m
-  verification_token_secret: "123o;rnfdjh1^%I@!$N&RJHDF*&T!#@$HADF&T"
 
 two_factor_auth:
   token_ttl: 10m
-  token_secret: "123"
   redirect_url: "http://localhost:8082"
   pending_session_ttl: 10m
 
 oauth:
   state_ttl: 5m
-
   handlers_timeout: 10s
-
   allowed_redirect_hosts:
     - localhost
-
-  google:
-    client_id:
-    client_secret:
-    redirect_url: "http://localhost:8082/auth/oauth/google/callback"
-
-  github:
-    client_id:
-    client_secret:
-    redirect_url: "http://localhost:8082/auth/oauth/github/callback"
 
 http_server:
   address: ":8082"
@@ -45,16 +29,11 @@ http_server:
 postgres:
   host: "postgres"
   port: 5432
-  user: "user"
-  password: "password"
-  dbname: "auth_service"
   sslmode: "disable"
 
 redis:
   addr: "redis:6379"
-  password: "1234"
   db: 1
 
 rabbitmq:
-  url: "amqp://user:password@rabbitmq:5672/"
   queue_name: "notificationsQueue"

@@ -34,7 +34,7 @@ func main() {
 }
 
 func startServer(ctx context.Context, cfg *config.Config, log *slog.Logger) {
-	r, err := rabbitmq.New(cfg.RabbitMQURL)
+	r, err := rabbitmq.New(cfg.RabbitMQ.URL)
 	if err != nil {
 		log.Error("failed to init rabbitmq", sl.Err(err))
 		return
@@ -53,7 +53,7 @@ func startServer(ctx context.Context, cfg *config.Config, log *slog.Logger) {
 	go func() {
 		defer close(done)
 
-		err := r.StartReading(ctx, cfg.QueueName, func(msg []byte) {
+		err := r.StartReading(ctx, cfg.RabbitMQ.QueueName, func(msg []byte) {
 			var emailMsg models.EmailMessage
 			if err := json.Unmarshal(msg, &emailMsg); err != nil {
 				log.Error("failed to unmarshal message", sl.Err(err))

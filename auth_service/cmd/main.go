@@ -67,15 +67,15 @@ func main() {
 	cfg := config.MustLoad("./config/config.yaml")
 
 	googleProvider := providers.NewGoogleProvider(
-		cfg.OAuth.Google.ClientID,
-		cfg.OAuth.Google.ClientSecret,
-		cfg.OAuth.Google.RedirectURL,
+		cfg.OAuth.GoogleClientID,
+		cfg.OAuth.GoogleClientSecret,
+		cfg.OAuth.GoogleRedirectURL,
 	)
 
 	githubProvider := providers.NewGitHubProvider(
-		cfg.OAuth.GitHub.ClientID,
-		cfg.OAuth.GitHub.ClientSecret,
-		cfg.OAuth.GitHub.RedirectURL,
+		cfg.OAuth.GitHubClientID,
+		cfg.OAuth.GitHubClientSecret,
+		cfg.OAuth.GitHubRedirectURL,
 	)
 
 	oauthProviders := map[string]oauth.OAuthProvider{

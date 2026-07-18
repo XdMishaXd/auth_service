@@ -3,10 +3,8 @@ services:
     build:
       context: ./docker/postgres
     container_name: auth_pg
+    env_file: .env
     environment:
-      POSTGRES_DB: auth_service
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
       PGDATA: /var/lib/postgresql/data/pgdata
     command: >
       postgres
@@ -17,39 +15,59 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d auth_service"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks: [backend]
   redis:
     image: redis:8
     container_name: auth_service_cache
-    restart: always
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping"]
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks: [backend]
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    ports:
-      - "5672:5672" # AMQP-протокол
-      - "15672:15672" # Веб-интерфейс
-    environment:
-      RABBITMQ_DEFAULT_USER: user
-      RABBITMQ_DEFAULT_PASS: password
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "5672"
+      - "15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    networks: [backend]
   auth_service:
     build:
       context: ./auth_service
@@ -57,14 +75,13 @@ services:
     ports:
       - "8082:8082"
     container_name: auth_service
-    restart: always
+    restart: unless-stopped
+    stop_grace_period: 15s
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: ./auth_service/.env
     volumes:
       - ./auth_service/config:/app/config
     healthcheck:
@@ -73,17 +90,32 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks: [backend, frontend]
   mail_sender:
     build:
       context: ./email_sender
       dockerfile: Dockerfile
     container_name: email_sender
-    restart: always
+    restart: unless-stopped
+    stop_grace_period: 15s
     depends_on:
-      rabbitmq:
-        condition: service_healthy
+      rabbitmq: { condition: service_healthy }
+    env_file: ./email_sender/.env
     volumes:
       - ./email_sender/config:/app/config
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    networks: [backend]
+
+networks:
+  backend:
+  frontend:
 
 volumes:
   postgres_data:
