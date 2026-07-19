@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s # как часто опрашивать таргеты
+  evaluation_interval: 15s # как часто считать recording/alerting rules (пока их нет)
+  external_labels:
+    environment: dev # staging, prod
+
+# rule_files: []  # раскомментировать и указать путь, когда появятся alerting/recording rules
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: auth_service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["auth_service:8082"]
+        labels:
+          service: auth_service
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres_exporter:9187"]
+        labels:
+          service: postgres
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis_exporter:9121"]
+        labels:
+          service: redis
+
+  - job_name: rabbitmq
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+        labels:
+          service: rabbitmq
+
+  - job_name: email_sender
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["email_sender:8081"]
+        labels:
+          service: email_sender

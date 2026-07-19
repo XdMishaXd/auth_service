@@ -36,7 +36,12 @@ services:
     env_file: .env
     expose:
       - "6379"
-    command: ["redis-server", "--appendonly", "yes"]
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --save 300 100
+      --save 60 10000
+      --appendonly no
     volumes:
       - redis_data:/data
     healthcheck:
@@ -55,9 +60,13 @@ services:
     container_name: rabbitmq
     restart: unless-stopped
     env_file: .env
+    command: >
+      sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus &&
+            rabbitmq-server"
     expose:
       - "5672"
       - "15672"
+      - "15692"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -70,8 +79,8 @@ services:
     networks: [backend]
   auth_service:
     build:
-      context: ./auth_service/docker
-      dockerfile: Dockerfile
+      context: ./auth_service
+      dockerfile: docker/Dockerfile
     ports:
       - "8082:8082"
     container_name: auth_service
@@ -83,7 +92,7 @@ services:
       redis: { condition: service_healthy }
     env_file: ./auth_service/.env
     volumes:
-      - ./auth_service/config:/app/config
+      - ./auth_service/config:/app/config:ro
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
       interval: 30s
@@ -97,8 +106,8 @@ services:
     networks: [backend, frontend]
   mail_sender:
     build:
-      context: ./email_sender/docker
-      dockerfile: Dockerfile
+      context: ./email_sender
+      dockerfile: docker/Dockerfile
     container_name: email_sender
     restart: unless-stopped
     stop_grace_period: 15s
@@ -106,11 +115,69 @@ services:
       rabbitmq: { condition: service_healthy }
     env_file: ./email_sender/.env
     volumes:
-      - ./email_sender/config:/app/config
+      - ./email_sender/config:/app/config:ro
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     deploy:
       resources:
         limits:
           memory: 128m
+    networks: [backend]
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter
+    restart: unless-stopped
+    env_file: ./monitoring/.env
+    expose:
+      - "9187"
+    depends_on:
+      postgres: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    networks: [backend]
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: redis_exporter
+    restart: unless-stopped
+    env_file: ./monitoring/.env
+    expose:
+      - "9121"
+    depends_on:
+      redis: { condition: service_healthy }
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    networks: [backend]
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.retention.size=2GB"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - postgres_exporter
+      - redis_exporter
+      - rabbitmq
+    deploy:
+      resources:
+        limits:
+          memory: 256m
     networks: [backend]
 
 networks:
@@ -120,3 +187,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:

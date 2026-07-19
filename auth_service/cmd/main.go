@@ -20,7 +20,8 @@ import (
 	requestAction "auth_service/internal/http_server/handlers/2fa/request_action_confirmation"
 	resendMagicLink "auth_service/internal/http_server/handlers/2fa/resend_magic_link"
 	verifyMagicLink "auth_service/internal/http_server/handlers/2fa/verify_magic_link"
-	"auth_service/internal/http_server/handlers/health"
+	"auth_service/internal/http_server/handlers/infrastructure/health"
+	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
 	"auth_service/internal/http_server/handlers/oauth/accounts"
@@ -35,10 +36,12 @@ import (
 	resendVerification "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
+	metricsCollector "auth_service/internal/http_server/middleware/metrics_collector"
 	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
 	swaggerAuth "auth_service/internal/http_server/middleware/swagger-auth"
 	"auth_service/internal/lib/jwt"
 	customValidator "auth_service/internal/lib/validation/custom_validator"
+	"auth_service/internal/metrics"
 	"auth_service/internal/rabbitmq"
 	rateLimit "auth_service/internal/ratelimit"
 	"auth_service/internal/storage/postgres"
@@ -160,10 +163,13 @@ func main() {
 
 	requestValidator := customValidator.New()
 
+	metrics := metrics.New()
+
 	router := setupRouter(
 		log,
 		cfg,
 		requestValidator,
+		metrics,
 		rlMiddlewares,
 		authService,
 		oauthService,
@@ -251,6 +257,7 @@ func setupRouter(
 	log *slog.Logger,
 	cfg *config.Config,
 	validate *validator.Validate,
+	m *metrics.Metrics,
 	rateLimiter *httpRateLimit.RateLimit,
 	authService *auth.Auth,
 	oauthService *oauth.OAuthService,
@@ -259,165 +266,169 @@ func setupRouter(
 	allowedRedirectHosts map[string]bool,
 ) *chi.Mux {
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
 
-	// Инфраструктурный эндпоинт
 	r.Get("/health", health.New())
+	r.Get("/metrics", metricsHandler.New(m))
 
-	if cfg.Swagger.Enabled {
-		r.Group(func(r chi.Router) {
-			r.Use(swaggerAuth.New(cfg.Swagger.Username, cfg.Swagger.Password))
-			r.Get("/swagger/*", httpSwagger.WrapHandler)
-		})
-	}
+	r.Group(func(r chi.Router) {
+		r.Use(metricsCollector.New(m))
+		r.Use(middleware.RequestID)
+		r.Use(middleware.RealIP)
+		r.Use(middleware.Logger)
+		r.Use(middleware.Recoverer)
 
-	r.Route("/auth", func(r chi.Router) {
-		r.With(rateLimiter.Register()).Post("/register",
-			register.New(
-				log,
-				validate,
-				authService,
-				msgBroker,
-				cfg.Tokens.VerificationTokenTTL,
-				cfg.Tokens.VerificationTokenSecret,
-				cfg.HTTPServer.Address,
-				cfg.HTTPServer.HandlersTimeout,
-			),
-		)
-		r.With(rateLimiter.Login()).Post("/login",
-			login.New(
-				log,
-				validate,
-				authService,
-				cfg.HTTPServer.HandlersTimeout,
-				cfg.TwoFactorAuth.PendingSessionTTL,
-			),
-		)
-		r.With(rateLimiter.Refresh()).Post("/refresh",
-			refresh.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
-		)
-		r.With(rateLimiter.Logout()).Post("/logout",
-			logout.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
-		)
-		r.With(rateLimiter.Verify()).Get("/verify",
-			verify.New(
-				log,
-				authService,
-				cfg.Tokens.VerificationTokenSecret,
-				cfg.HTTPServer.HandlersTimeout,
-			),
-		)
-		r.With(rateLimiter.ResendVerificationEmail()).Post("/verify/resend",
-			resendVerification.New(
-				log,
-				validate,
-				authService,
-				msgBroker,
-				cfg.Tokens.VerificationTokenTTL,
-				cfg.Tokens.VerificationTokenSecret,
-				cfg.HTTPServer.Address,
-				cfg.HTTPServer.HandlersTimeout,
-			),
-		)
-
-		r.With(rateLimiter.ForgotPassword()).Post("/password/forgot",
-			forgot.New(
-				log,
-				validate,
-				msgBroker,
-				authService,
-				cfg.HTTPServer.Address,
-				cfg.HTTPServer.HandlersTimeout,
-			),
-		)
-
-		r.With(rateLimiter.ResetPassword()).Post("/password/reset",
-			reset.New(
-				log,
-				validate,
-				authService,
-				cfg.HTTPServer.HandlersTimeout,
-			),
-		)
-
-		r.Route("/oauth", func(r chi.Router) {
-			// Публичные эндпоинты — юзер ещё не аутентифицирован.
-			r.With(rateLimiter.OAuthLogin()).Get("/{provider}/login",
-				ologin.New(
-					log,
-					oauthService,
-					allowedRedirectHosts,
-				),
-			)
-			r.With(rateLimiter.OAuthCallback()).Get("/{provider}/callback",
-				callback.New(log,
-					oauthService,
-					allowedRedirectHosts,
-					cfg.OAuth.HandlersTimeout,
-				),
-			)
-
-			// Authenticated — RequireAuth обязателен ДО rate limiter'ов,
-			// использующих byUserID (им нужен claims в контексте).
+		if cfg.Swagger.Enabled {
 			r.Group(func(r chi.Router) {
-				r.Use(claimsParser.RequireAuth(appProvider))
+				r.Use(swaggerAuth.New(cfg.Swagger.Username, cfg.Swagger.Password))
+				r.Get("/swagger/*", httpSwagger.WrapHandler)
+			})
+		}
 
-				r.Get("/accounts",
-					accounts.New(log, oauthService),
-				)
-				r.With(rateLimiter.OAuthLink()).Post("/{provider}/link",
-					link.New(
+		r.Route("/auth", func(r chi.Router) {
+			r.With(rateLimiter.Register()).Post("/register",
+				register.New(
+					log,
+					validate,
+					authService,
+					msgBroker,
+					cfg.Tokens.VerificationTokenTTL,
+					cfg.Tokens.VerificationTokenSecret,
+					cfg.HTTPServer.Address,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+			r.With(rateLimiter.Login()).Post("/login",
+				login.New(
+					log,
+					validate,
+					authService,
+					cfg.HTTPServer.HandlersTimeout,
+					cfg.TwoFactorAuth.PendingSessionTTL,
+				),
+			)
+			r.With(rateLimiter.Refresh()).Post("/refresh",
+				refresh.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
+			)
+			r.With(rateLimiter.Logout()).Post("/logout",
+				logout.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
+			)
+			r.With(rateLimiter.Verify()).Get("/verify",
+				verify.New(
+					log,
+					authService,
+					cfg.Tokens.VerificationTokenSecret,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+			r.With(rateLimiter.ResendVerificationEmail()).Post("/verify/resend",
+				resendVerification.New(
+					log,
+					validate,
+					authService,
+					msgBroker,
+					cfg.Tokens.VerificationTokenTTL,
+					cfg.Tokens.VerificationTokenSecret,
+					cfg.HTTPServer.Address,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+
+			r.With(rateLimiter.ForgotPassword()).Post("/password/forgot",
+				forgot.New(
+					log,
+					validate,
+					msgBroker,
+					authService,
+					cfg.HTTPServer.Address,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+
+			r.With(rateLimiter.ResetPassword()).Post("/password/reset",
+				reset.New(
+					log,
+					validate,
+					authService,
+					cfg.HTTPServer.HandlersTimeout,
+				),
+			)
+
+			r.Route("/oauth", func(r chi.Router) {
+				// Публичные эндпоинты — юзер ещё не аутентифицирован.
+				r.With(rateLimiter.OAuthLogin()).Get("/{provider}/login",
+					ologin.New(
 						log,
 						oauthService,
 						allowedRedirectHosts,
-						cfg.HTTPServer.HandlersTimeout,
 					),
 				)
-				r.With(rateLimiter.OAuthUnlink()).Delete("/{provider}",
-					unlink.New(log, oauthService, cfg.HTTPServer.HandlersTimeout),
+				r.With(rateLimiter.OAuthCallback()).Get("/{provider}/callback",
+					callback.New(log,
+						oauthService,
+						allowedRedirectHosts,
+						cfg.OAuth.HandlersTimeout,
+					),
 				)
+
+				// Authenticated — RequireAuth обязателен ДО rate limiter'ов,
+				// использующих byUserID (им нужен claims в контексте).
+				r.Group(func(r chi.Router) {
+					r.Use(claimsParser.RequireAuth(appProvider))
+
+					r.Get("/accounts",
+						accounts.New(log, oauthService),
+					)
+					r.With(rateLimiter.OAuthLink()).Post("/{provider}/link",
+						link.New(
+							log,
+							oauthService,
+							allowedRedirectHosts,
+							cfg.HTTPServer.HandlersTimeout,
+						),
+					)
+					r.With(rateLimiter.OAuthUnlink()).Delete("/{provider}",
+						unlink.New(log, oauthService, cfg.HTTPServer.HandlersTimeout),
+					)
+				})
 			})
-		})
 
-		r.Route("/2fa/magic-link", func(r chi.Router) {
-			r.With(rateLimiter.MagicLinkVerify()).Post("/verify",
-				verifyMagicLink.New(
-					log,
-					validate,
-					authService,
-					cfg.HTTPServer.HandlersTimeout,
-				),
-			)
-			r.With(rateLimiter.MagicLinkResend()).Post("/resend",
-				resendMagicLink.New(
-					log,
-					validate,
-					authService,
-					cfg.HTTPServer.HandlersTimeout,
-				),
-			)
-
-			// Authenticated — требуют access-токен.
-			r.Group(func(r chi.Router) {
-				r.Use(claimsParser.RequireAuth(appProvider))
-
-				r.With(rateLimiter.MagicLinkEnable()).Post("/enable",
-					enable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
-				)
-				r.With(rateLimiter.MagicLinkDisable()).Post("/disable",
-					disable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
-				)
-				r.With(rateLimiter.MagicLinkRequestActionConfirmation()).Post("/request-action-confirmation",
-					requestAction.New(
+			r.Route("/2fa/magic-link", func(r chi.Router) {
+				r.With(rateLimiter.MagicLinkVerify()).Post("/verify",
+					verifyMagicLink.New(
 						log,
+						validate,
 						authService,
 						cfg.HTTPServer.HandlersTimeout,
-						cfg.TwoFactorAuth.PendingSessionTTL,
 					),
 				)
+				r.With(rateLimiter.MagicLinkResend()).Post("/resend",
+					resendMagicLink.New(
+						log,
+						validate,
+						authService,
+						cfg.HTTPServer.HandlersTimeout,
+					),
+				)
+
+				// Authenticated — требуют access-токен.
+				r.Group(func(r chi.Router) {
+					r.Use(claimsParser.RequireAuth(appProvider))
+
+					r.With(rateLimiter.MagicLinkEnable()).Post("/enable",
+						enable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
+					)
+					r.With(rateLimiter.MagicLinkDisable()).Post("/disable",
+						disable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
+					)
+					r.With(rateLimiter.MagicLinkRequestActionConfirmation()).Post("/request-action-confirmation",
+						requestAction.New(
+							log,
+							authService,
+							cfg.HTTPServer.HandlersTimeout,
+							cfg.TwoFactorAuth.PendingSessionTTL,
+						),
+					)
+				})
 			})
 		})
 	})

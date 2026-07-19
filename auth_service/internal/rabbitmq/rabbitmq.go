@@ -12,6 +12,11 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	dlxExchangeName = "email.dlx"
+	dlqName         = "email.verification.dlq"
+)
+
 type RabbitMQClient struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
@@ -32,8 +37,21 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	if err := declareDeadLetterInfra(ch, queueName, dlxExchangeName, dlqName); err != nil {
+		ch.Close()
+		conn.Close()
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
 	q, err := ch.QueueDeclare(
-		queueName, true, false, false, false, nil,
+		queueName,
+		true,  // durable
+		false, // autoDelete
+		false, // exclusive
+		false, // noWait
+		amqp.Table{
+			"x-dead-letter-exchange": dlxExchangeName,
+		},
 	)
 	if err != nil {
 		ch.Close()
@@ -41,11 +59,7 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return &RabbitMQClient{
-		conn:    conn,
-		channel: ch,
-		queue:   q,
-	}, nil
+	return &RabbitMQClient{conn: conn, channel: ch, queue: q}, nil
 }
 
 func (r *RabbitMQClient) SendMessage(ctx context.Context, msg models.Message) error {
@@ -91,4 +105,32 @@ func (r *RabbitMQClient) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return fmt.Errorf("rabbitmq close timed out: %w", ctx.Err())
 	}
+}
+
+// declareDeadLetterInfra объявляет DLX-exchange и DLQ, куда попадают
+// сообщения, которые consumer явно nack'нул без requeue.
+func declareDeadLetterInfra(ch *amqp.Channel, mainQueueName, dlxName, dlqName string) error {
+	const op = "rabbimq.declareDeadLetterInfra"
+
+	if err := ch.ExchangeDeclare(
+		dlxName, // используем параметр, а не глобальную константу
+		"direct",
+		true, false, false, false,
+		nil,
+	); err != nil {
+		return fmt.Errorf("%s: exchange declare: %w", op, err)
+	}
+
+	if _, err := ch.QueueDeclare(
+		dlqName,
+		true, false, false, false, nil,
+	); err != nil {
+		return fmt.Errorf("%s: queue declare: %w", op, err)
+	}
+
+	if err := ch.QueueBind(dlqName, mainQueueName, dlxName, false, nil); err != nil {
+		return fmt.Errorf("%s: queue bind: %w", op, err)
+	}
+
+	return nil
 }
