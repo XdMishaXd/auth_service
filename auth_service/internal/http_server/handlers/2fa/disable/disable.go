@@ -42,7 +42,6 @@ type Request struct {
 // @Failure      409  {object}  object{status=string,error=string}  "2FA не включена"  example({"status": "error", "error": "2fa is not enabled"})
 // @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
 // @Router       /auth/2fa/magic-link/disable [post]
-// @Router       /auth/2fa/magic-link/disable [post]
 func New(
 	log *slog.Logger,
 	authMiddleware *auth.Auth,

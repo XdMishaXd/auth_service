@@ -62,7 +62,10 @@ services:
     env_file: .env
     command: >
       sh -c "rabbitmq-plugins enable --offline rabbitmq_prometheus &&
-            rabbitmq-server"
+      rabbitmq-server"
+    volumes:
+      - ./monitoring/rabbitmq/rabbitmq.conf:/etc/rabbitmq/conf.d/99-prometheus.conf:ro
+      - rabbitmq_data:/var/lib/rabbitmq
     expose:
       - "5672"
       - "15672"
@@ -113,6 +116,7 @@ services:
     stop_grace_period: 15s
     depends_on:
       rabbitmq: { condition: service_healthy }
+      auth_service: { condition: service_healthy }
     env_file: ./email_sender/.env
     volumes:
       - ./email_sender/config:/app/config:ro
@@ -130,7 +134,7 @@ services:
           memory: 128m
     networks: [backend]
   postgres_exporter:
-    image: prometheuscommunity/postgres-exporter:v0.15.0
+    image: prometheuscommunity/postgres-exporter:v0.17.1
     container_name: postgres_exporter
     restart: unless-stopped
     env_file: ./monitoring/.env
@@ -157,6 +161,55 @@ services:
         limits:
           memory: 64m
     networks: [backend]
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: loki
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    expose:
+      - "3100"
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    networks: [backend]
+  promtail:
+    image: grafana/promtail:3.2.1
+    container_name: promtail
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./monitoring/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    networks: [backend]
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: grafana
+    restart: unless-stopped
+    env_file: ./monitoring/.env
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    networks: [backend]
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: prometheus
@@ -168,8 +221,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"
       - "--storage.tsdb.retention.size=2GB"
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     depends_on:
       - postgres_exporter
       - redis_exporter
@@ -188,3 +241,6 @@ volumes:
   postgres_data:
   redis_data:
   prometheus_data:
+  loki_data:
+  grafana_data:
+  rabbitmq_data:

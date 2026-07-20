@@ -1603,7 +1603,27 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_http_server_handlers_health.Response"
+                            "$ref": "#/definitions/internal_http_server_handlers_infrastructure_health.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/metrics": {
+            "get": {
+                "description": "Отдаёт метрики сервиса в формате Prometheus exposition format.\nНе предназначен для вызова из браузера/фронтенда — эндпоинт\nдля scrape'а Prometheus-сервером.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Prometheus метрики",
+                "responses": {
+                    "200": {
+                        "description": "Метрики в текстовом формате Prometheus",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -1611,7 +1631,7 @@
         }
     },
     "definitions": {
-        "internal_http_server_handlers_health.Response": {
+        "internal_http_server_handlers_infrastructure_health.Response": {
             "type": "object",
             "properties": {
                 "error": {

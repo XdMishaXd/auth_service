@@ -1,6 +1,6 @@
 basePath: /
 definitions:
-  internal_http_server_handlers_health.Response:
+  internal_http_server_handlers_infrastructure_health.Response:
     properties:
       error:
         type: string
@@ -1360,8 +1360,24 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/internal_http_server_handlers_health.Response'
+            $ref: '#/definitions/internal_http_server_handlers_infrastructure_health.Response'
       summary: Health check
+      tags:
+      - System
+  /metrics:
+    get:
+      description: |-
+        Отдаёт метрики сервиса в формате Prometheus exposition format.
+        Не предназначен для вызова из браузера/фронтенда — эндпоинт
+        для scrape'а Prometheus-сервером.
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Метрики в текстовом формате Prometheus
+          schema:
+            type: string
+      summary: Prometheus метрики
       tags:
       - System
 swagger: "2.0"
