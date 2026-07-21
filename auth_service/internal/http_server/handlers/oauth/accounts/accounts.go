@@ -26,17 +26,22 @@ type Response struct {
 	Accounts []Account `json:"accounts"`
 }
 
-// New godoc
-// @Summary      List linked OAuth accounts
-// @Description  Returns all third-party OAuth providers linked to the
-// @Description  currently authenticated user's account.
+// @Summary      Callback OAuth-провайдера
+// @Description  Обрабатывает перенаправление от OAuth-провайдера после завершения авторизации пользователя.
+// @Description  В зависимости от параметра state завершает вход в систему или привязывает OAuth-провайдера к существующему аккаунту.
 // @Tags         oauth
-// @Security     BearerAuth
 // @Produce      json
-// @Success      200  {object}  Response  "Список привязанных аккаунтов"  example({"status": "ok", "accounts": [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
-// @Router       /auth/oauth/accounts [get]
+// @Param        provider  path   string  true  "Название OAuth-провайдера (например: google, github)"
+// @Param        code      query  string  true  "Код авторизации, полученный от OAuth-провайдера"
+// @Param        state     query  string  true  "Токен состояния (state), полученный при начале авторизации или привязки аккаунта"
+// @Param        error     query  string  false "Код ошибки, возвращённый OAuth-провайдером, если пользователь отказал в доступе"
+// @Success      200  {object}  Response  "Операция успешно выполнена"
+// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отказал в доступе, отсутствуют обязательные параметры code или state, state недействителен или истёк, либо указан некорректный app_id"
+// @Failure      403  {object}  object{status=string,error=string}  "Email, полученный от OAuth-провайдера, не подтверждён"
+// @Failure      404  {object}  object{status=string,error=string}  "OAuth-провайдер не поддерживается"
+// @Failure      409  {object}  object{status=string,error=string}  "Конфликт данных: аккаунт с таким email уже существует или OAuth-провайдер уже привязан к другому аккаунту"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
+// @Router       /auth/oauth/{provider}/callback [get]
 func New(
 	log *slog.Logger,
 	authService *oauth.OAuthService,

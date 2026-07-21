@@ -138,6 +138,9 @@ services:
     container_name: postgres_exporter
     restart: unless-stopped
     env_file: ./monitoring/.env
+    environment:
+      PG_EXPORTER_AUTO_DISCOVER_DATABASES: "false"
+      PG_EXPORTER_EXCLUDE_DATABASES: "template0,template1,postgres"
     expose:
       - "9187"
     depends_on:
@@ -221,8 +224,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"
       - "--storage.tsdb.retention.size=2GB"
-    expose:
-      - "9090"
+    ports:
+      - "9090:9090"
     depends_on:
       - postgres_exporter
       - redis_exporter

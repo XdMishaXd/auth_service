@@ -14,8 +14,8 @@ type Response struct {
 
 // New godoc
 //
-//	@Summary		Health check
-//	@Description	Checks that the service is running and able to process requests.
+//	@Summary		Проверка работоспособности
+//	@Description	Проверяет, запущен ли сервис и готов ли он обрабатывать запросы.
 //	@Tags			System
 //	@Produce		json
 //	@Success		200	{object}	health.Response

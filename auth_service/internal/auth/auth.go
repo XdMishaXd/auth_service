@@ -1,18 +1,17 @@
 package auth
 
 import (
+	"auth_service/internal/lib/jwt"
+	"auth_service/internal/lib/tokens"
+	"auth_service/internal/lib/verification"
+	"auth_service/internal/models"
+	"auth_service/internal/storage"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
-
-	"auth_service/internal/lib/jwt"
-	"auth_service/internal/lib/tokens"
-	"auth_service/internal/lib/verification"
-	"auth_service/internal/models"
-	"auth_service/internal/storage"
 
 	sl "auth_service/internal/lib/logger"
 

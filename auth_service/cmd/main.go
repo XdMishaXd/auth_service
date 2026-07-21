@@ -20,8 +20,10 @@ import (
 	requestAction "auth_service/internal/http_server/handlers/2fa/request_action_confirmation"
 	resendMagicLink "auth_service/internal/http_server/handlers/2fa/resend_magic_link"
 	verifyMagicLink "auth_service/internal/http_server/handlers/2fa/verify_magic_link"
+	docsHandler "auth_service/internal/http_server/handlers/infrastructure/docs"
 	"auth_service/internal/http_server/handlers/infrastructure/health"
 	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics"
+	scalarHandler "auth_service/internal/http_server/handlers/infrastructure/scalar"
 	"auth_service/internal/http_server/handlers/login"
 	"auth_service/internal/http_server/handlers/logout"
 	"auth_service/internal/http_server/handlers/oauth/accounts"
@@ -50,7 +52,6 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-playground/validator/v10"
-	httpSwagger "github.com/swaggo/http-swagger"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -280,7 +281,8 @@ func setupRouter(
 		if cfg.Swagger.Enabled {
 			r.Group(func(r chi.Router) {
 				r.Use(swaggerAuth.New(cfg.Swagger.Username, cfg.Swagger.Password))
-				r.Get("/swagger/*", httpSwagger.WrapHandler)
+				r.Get("/swagger/doc.json", docsHandler.New())
+				r.Get("/docs", scalarHandler.New("/swagger/doc.json"))
 			})
 		}
 

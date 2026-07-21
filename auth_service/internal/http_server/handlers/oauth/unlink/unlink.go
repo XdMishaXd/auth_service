@@ -22,19 +22,20 @@ type Response struct {
 	resp.Response
 }
 
-// New godoc
-// @Summary      Unlink OAuth provider from account
-// @Description  Removes the link between the given OAuth provider and the
-// @Description  currently authenticated user. Fails if this is the user's
-// @Description  last remaining authentication method, to prevent account lockout.
+// @Summary      Отвязка OAuth-провайдера от аккаунта
+// @Description  Удаляет связь между указанным OAuth-провайдером и аккаунтом
+// @Description  текущего аутентифицированного пользователя.
+// @Description  Если этот способ входа является последним доступным методом
+// @Description  аутентификации, операция будет отклонена, чтобы предотвратить
+// @Description  потерю доступа к аккаунту.
 // @Tags         oauth
 // @Security     BearerAuth
-// @Param        provider  path  string  true  "OAuth provider name (e.g. google, github)"
-// @Success      204  "Провайдер успешно отвязан"
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      403  {object}  object{status=string,error=string}  "Нельзя отвязать последний метод аутентификации"  example({"status": "error", "error": "cannot unlink last authentication method"})
-// @Failure      404  {object}  object{status=string,error=string}  "OAuth-аккаунт с таким provider не найден у пользователя"  example({"status": "error", "error": "oauth account not found"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Param        provider  path  string  true  "Название OAuth-провайдера (например: google, github)"
+// @Success      204  "OAuth-провайдер успешно отвязан"
+// @Failure      401  {object}  object{status=string,error=string}  "Access-токен отсутствует, недействителен или истёк"
+// @Failure      403  {object}  object{status=string,error=string}  "Нельзя отвязать последний доступный способ аутентификации"
+// @Failure      404  {object}  object{status=string,error=string}  "У пользователя отсутствует привязка к указанному OAuth-провайдеру"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/oauth/{provider} [delete]
 func New(
 	log *slog.Logger,

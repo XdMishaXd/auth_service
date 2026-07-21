@@ -25,22 +25,22 @@ type Response struct {
 	RedirectURL string `json:"redirect_url"`
 }
 
-// New godoc
-// @Summary      Link OAuth provider to existing account
-// @Description  Starts OAuth2 flow to link a third-party provider to the
-// @Description  currently authenticated user's account. Requires a valid
-// @Description  access token; user_id is taken from claims, not request body,
-// @Description  so the link is always bound to the authenticated session.
+// @Summary      Привязка OAuth-провайдера к существующему аккаунту
+// @Description  Запускает OAuth2-процесс привязки стороннего OAuth-провайдера к аккаунту
+// @Description  текущего аутентифицированного пользователя.
+// @Description  Требует действительный access-токен. Идентификатор пользователя
+// @Description  извлекается из его данных, а не из параметров запроса,
+// @Description  поэтому привязка всегда выполняется для текущей сессии.
 // @Tags         oauth
 // @Security     BearerAuth
 // @Produce      json
-// @Param        provider      path   string  true   "OAuth provider name (e.g. google, github)"
-// @Param        redirect_uri  query  string  true   "Callback URL after auth, must match allowed hosts" example("https://app.example.com/callback")
-// @Success      200  {object}  Response  "Ссылка для перехода к провайдеру"  example({"status": "ok", "redirect_url": "https://accounts.google.com/o/oauth2/..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидный redirect_uri или app_id"  example({"status": "error", "error": "invalid app id"})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      404  {object}  object{status=string,error=string}  "Неизвестный OAuth provider"  example({"status": "error", "error": "unknown oauth provider"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Param        provider      path   string  true  "Название OAuth-провайдера (например: google, github)"
+// @Param        redirect_uri  query  string  true  "URL, на который будет выполнено перенаправление после завершения авторизации. Должен входить в список разрешённых адресов."
+// @Success      200  {object}  Response  "Ссылка для перехода к OAuth-провайдеру"
+// @Failure      400  {object}  object{status=string,error=string}  "Некорректный redirect_uri или app_id"
+// @Failure      401  {object}  object{status=string,error=string}  "Access-токен отсутствует, недействителен или истёк"
+// @Failure      404  {object}  object{status=string,error=string}  "OAuth-провайдер не поддерживается"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/oauth/{provider}/link [get]
 func New(
 	log *slog.Logger,

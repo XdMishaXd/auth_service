@@ -4,35 +4,94 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "refresh": "10s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "title": "Services Up",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "up", "legendFormat": "{{job}}", "refId": "A" }
+        {
+          "expr": "up",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
       ],
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } },
-            { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } }
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
           ],
-          "thresholds": { "steps": [{ "value": 0, "color": "red" }, { "value": 1, "color": "green" }] }
+          "thresholds": {
+            "steps": [
+              {
+                "value": 0,
+                "color": "red"
+              },
+              {
+                "value": 1,
+                "color": "green"
+              }
+            ]
+          }
         }
       }
     },
-
-    { "id": 2, "type": "row", "title": "auth_service — HTTP", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 } },
+    {
+      "id": 2,
+      "type": "row",
+      "title": "auth_service — HTTP",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      }
+    },
     {
       "id": 3,
       "title": "RPS by route",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{job=\"auth_service\"}[1m])) by (pattern)",
@@ -45,8 +104,16 @@
       "id": 4,
       "title": "Error rate (5xx) by route",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{job=\"auth_service\", status=~\"5..\"}[1m])) by (pattern)",
@@ -59,8 +126,16 @@
       "id": 5,
       "title": "p95 latency by route",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"auth_service\"}[5m])) by (le, pattern))",
@@ -69,14 +144,31 @@
         }
       ]
     },
-
-    { "id": 6, "type": "row", "title": "RabbitMQ", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 } },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "RabbitMQ",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      }
+    },
     {
       "id": 7,
       "title": "Queue depth (ready messages)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "rabbitmq_queue_messages_ready",
@@ -89,8 +181,16 @@
       "id": 8,
       "title": "Unacked messages",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "rabbitmq_queue_messages_unacked",
@@ -103,8 +203,16 @@
       "id": 9,
       "title": "DLQ depth (email.verification.dlq)",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 30 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "rabbitmq_queue_messages_ready{queue=\"email.verification.dlq\"}",
@@ -116,78 +224,190 @@
         "defaults": {
           "thresholds": {
             "steps": [
-              { "value": 0, "color": "green" },
-              { "value": 1, "color": "yellow" },
-              { "value": 10, "color": "red" }
+              {
+                "value": 0,
+                "color": "green"
+              },
+              {
+                "value": 1,
+                "color": "yellow"
+              },
+              {
+                "value": 10,
+                "color": "red"
+              }
             ]
           }
         }
       }
     },
-
-    { "id": 10, "type": "row", "title": "Postgres", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 } },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Postgres",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      }
+    },
     {
       "id": 11,
       "title": "Active connections",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 37 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "pg_stat_activity_count", "legendFormat": "{{datname}}", "refId": "A" }
+        {
+          "expr": "pg_stat_activity_count{datname=\"auth_service\"}",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
       ]
     },
     {
       "id": 12,
       "title": "Transactions committed/rolled back (rate)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 37 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 37
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "rate(pg_stat_database_xact_commit[1m])", "legendFormat": "commit {{datname}}", "refId": "A" },
-        { "expr": "rate(pg_stat_database_xact_rollback[1m])", "legendFormat": "rollback {{datname}}", "refId": "B" }
+        {
+          "expr": "rate(pg_stat_database_xact_commit{datname=\"auth_service\"}[1m])",
+          "legendFormat": "commit {{datname}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(pg_stat_database_xact_rollback{datname=\"auth_service\"}[1m])",
+          "legendFormat": "rollback {{datname}}",
+          "refId": "B"
+        }
       ]
     },
-
-    { "id": 13, "type": "row", "title": "Redis", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 45 } },
+    {
+      "id": 13,
+      "type": "row",
+      "title": "Redis",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      }
+    },
     {
       "id": 14,
       "title": "Connected clients",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 46 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "redis_connected_clients", "legendFormat": "clients", "refId": "A" }
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "clients",
+          "refId": "A"
+        }
       ]
     },
     {
       "id": 15,
       "title": "Memory used",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 46 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "redis_memory_used_bytes", "legendFormat": "used bytes", "refId": "A" }
+        {
+          "expr": "redis_memory_used_bytes",
+          "legendFormat": "used bytes",
+          "refId": "A"
+        }
       ]
     },
-
-    { "id": 16, "type": "row", "title": "email_sender — consumer", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 54 } },
+    {
+      "id": 16,
+      "type": "row",
+      "title": "email_sender — consumer",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      }
+    },
     {
       "id": 17,
       "title": "Messages consumed vs failed (rate)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 55
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
-        { "expr": "rate(messages_consumed_total{job=\"email_sender\"}[1m])", "legendFormat": "consumed", "refId": "A" },
-        { "expr": "sum(rate(messages_failed_total{job=\"email_sender\"}[1m])) by (reason)", "legendFormat": "failed: {{reason}}", "refId": "B" }
+        {
+          "expr": "rate(messages_consumed_total{job=\"email_sender\"}[1m])",
+          "legendFormat": "consumed",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(messages_failed_total{job=\"email_sender\"}[1m])) by (reason)",
+          "legendFormat": "failed: {{reason}}",
+          "refId": "B"
+        }
       ]
     },
     {
       "id": 18,
       "title": "Processing duration p95",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 55
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "histogram_quantile(0.95, sum(rate(message_processing_duration_seconds_bucket{job=\"email_sender\"}[5m])) by (le))",

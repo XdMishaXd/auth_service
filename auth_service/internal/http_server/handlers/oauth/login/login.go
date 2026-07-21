@@ -15,21 +15,21 @@ import (
 	"github.com/go-chi/render"
 )
 
-// New godoc
-// @Summary      Initiate OAuth login
-// @Description  Starts the OAuth2 authorization flow for the given provider.
-// @Description  Validates app_id and redirect_uri against the allowed hosts
-// @Description  whitelist, then redirects the client to the provider's
-// @Description  authorization URL (state is generated and tracked server-side).
+// @Summary      Начало OAuth-авторизации
+// @Description  Запускает процесс OAuth2-авторизации для указанного OAuth-провайдера.
+// @Description  Проверяет корректность app_id и redirect_uri, а также соответствие
+// @Description  redirect_uri списку разрешённых адресов.
+// @Description  После успешной проверки формирует параметр state и перенаправляет
+// @Description  пользователя на страницу авторизации OAuth-провайдера.
 // @Tags         oauth
 // @Produce      json
-// @Param        provider      path   string  true   "OAuth provider name (e.g. google, github)"
-// @Param        app_id        query  integer true   "ID приложения-клиента" example(1)
-// @Param        redirect_uri  query  string  true   "Callback URL after auth, must match allowed hosts" example("https://app.example.com/callback")
-// @Success      302  "Redirect to provider's OAuth consent screen"
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидный app_id или redirect_uri не прошёл валидацию"  example({"status": "error", "error": "redirect_uri host not allowed"})
-// @Failure      404  {object}  object{status=string,error=string}  "Неизвестный OAuth provider"  example({"status": "error", "error": "oauth provider not found"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка при формировании authorization URL"  example({"status": "error", "error": "Internal error"})
+// @Param        provider      path   string   true  "Название OAuth-провайдера (например: google, github)"
+// @Param        app_id        query  integer  true  "Идентификатор клиентского приложения"
+// @Param        redirect_uri  query  string   true  "URL для перенаправления после завершения авторизации. Должен входить в список разрешённых адресов."
+// @Success      302  "Перенаправление на страницу авторизации OAuth-провайдера"
+// @Failure      400  {object}  object{status=string,error=string}  "Некорректный app_id или redirect_uri не прошёл проверку"
+// @Failure      404  {object}  object{status=string,error=string}  "OAuth-провайдер не поддерживается"
+// @Failure      500  {object}  object{status=string,error=string}  "Не удалось сформировать URL для авторизации"
 // @Router       /auth/oauth/{provider}/login [get]
 func New(
 	log *slog.Logger,

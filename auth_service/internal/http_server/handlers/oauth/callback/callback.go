@@ -24,25 +24,24 @@ type Response struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-// New godoc
-// @Summary      OAuth provider callback
-// @Description  Handles the redirect from the OAuth provider after user consent.
-// @Description  Validates state against the stored value (login or link flow),
-// @Description  exchanges the authorization code for tokens, and either issues
-// @Description  a new access/refresh token pair (login) or links the provider
-// @Description  to the existing account (link), depending on how state was created.
+// @Summary      Callback OAuth-провайдера
+// @Description  Обрабатывает перенаправление от OAuth-провайдера после того, как пользователь предоставил или отклонил доступ.
+// @Description  Проверяет параметр state на соответствие ранее сохранённому значению (авторизация или привязка аккаунта),
+// @Description  обменивает код авторизации на токены провайдера и в зависимости от типа операции
+// @Description  либо выдает новую пару access и refresh токенов,
+// @Description  либо привязывает OAuth-провайдера к существующему аккаунту.
 // @Tags         oauth
 // @Produce      json
-// @Param        provider  path   string  true  "OAuth provider name (e.g. google, github)"
-// @Param        code      query  string  true  "Authorization code issued by the provider"
-// @Param        state     query  string  true  "Opaque state token, must match value issued in /login or /link"
-// @Param        error     query  string  false "Error code returned by provider if user denied access"
-// @Success      200  {object}  Response  "Пара access/refresh токенов"  example({"status": "ok", "access_token": "eyJ...", "refresh_token": "eyJ..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отклонил доступ, отсутствуют code/state, невалидный app_id или state истёк/невалиден"  example({"status": "error", "error": "invalid or expired oauth state"})
-// @Failure      403  {object}  object{status=string,error=string}  "Email не подтверждён провайдером"  example({"status": "error", "error": "email not verified by provider"})
-// @Failure      404  {object}  object{status=string,error=string}  "Неизвестный OAuth provider"  example({"status": "error", "error": "unknown oauth provider"})
-// @Failure      409  {object}  object{status=string,error=string}  "Конфликт: аккаунт с таким email уже существует, либо provider уже привязан"  example({"status": "error", "error": "account with this email already exists, log in and link instead"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Param        provider  path   string  true  "Название OAuth-провайдера (например: google, github)"
+// @Param        code      query  string  true  "Код авторизации, полученный от OAuth-провайдера"
+// @Param        state     query  string  true  "Токен состояния (state), должен совпадать со значением, выданным при начале авторизации или привязки аккаунта"
+// @Param        error     query  string  false "Код ошибки, возвращаемый OAuth-провайдером, если пользователь отказал в доступе"
+// @Success      200  {object}  Response  "Успешная авторизация или привязка аккаунта"  example({"status":"ok","access_token":"eyJ...","refresh_token":"eyJ..."})
+// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отказал в доступе, отсутствуют параметры code/state, указан некорректный app_id либо state недействителен или истёк"  example({"status":"error","error":"invalid or expired oauth state"})
+// @Failure      403  {object}  object{status=string,error=string}  "Email, полученный от OAuth-провайдера, не подтверждён"  example({"status":"error","error":"email not verified by provider"})
+// @Failure      404  {object}  object{status=string,error=string}  "Указанный OAuth-провайдер не поддерживается"  example({"status":"error","error":"unknown oauth provider"})
+// @Failure      409  {object}  object{status=string,error=string}  "Конфликт данных: аккаунт с таким email уже существует либо OAuth-провайдер уже привязан к другому аккаунту"  example({"status":"error","error":"account with this email already exists, log in and link instead"})
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status":"error","error":"internal server error"})
 // @Router       /auth/oauth/{provider}/callback [get]
 func New(
 	log *slog.Logger,

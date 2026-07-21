@@ -550,21 +550,22 @@ paths:
   /auth/oauth/{provider}:
     delete:
       description: |-
-        Removes the link between the given OAuth provider and the
-        currently authenticated user. Fails if this is the user's
-        last remaining authentication method, to prevent account lockout.
+        Удаляет связь между указанным OAuth-провайдером и аккаунтом
+        текущего аутентифицированного пользователя.
+        Если этот способ входа является последним доступным методом
+        аутентификации, операция будет отклонена, чтобы предотвратить
+        потерю доступа к аккаунту.
       parameters:
-      - description: OAuth provider name (e.g. google, github)
+      - description: 'Название OAuth-провайдера (например: google, github)'
         in: path
         name: provider
         required: true
         type: string
       responses:
         "204":
-          description: Провайдер успешно отвязан
+          description: OAuth-провайдер успешно отвязан
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access-токен отсутствует, недействителен или истёк
           schema:
             properties:
               error:
@@ -573,8 +574,7 @@ paths:
                 type: string
             type: object
         "403":
-          description: 'Нельзя отвязать последний метод аутентификации"  example({"status":
-            "error", "error": "cannot unlink last authentication method"})'
+          description: Нельзя отвязать последний доступный способ аутентификации
           schema:
             properties:
               error:
@@ -583,8 +583,7 @@ paths:
                 type: string
             type: object
         "404":
-          description: 'OAuth-аккаунт с таким provider не найден у пользователя"  example({"status":
-            "error", "error": "oauth account not found"})'
+          description: У пользователя отсутствует привязка к указанному OAuth-провайдеру
           schema:
             properties:
               error:
@@ -593,8 +592,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -604,34 +602,36 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Unlink OAuth provider from account
+      summary: Отвязка OAuth-провайдера от аккаунта
       tags:
       - oauth
   /auth/oauth/{provider}/callback:
     get:
       description: |-
-        Handles the redirect from the OAuth provider after user consent.
-        Validates state against the stored value (login or link flow),
-        exchanges the authorization code for tokens, and either issues
-        a new access/refresh token pair (login) or links the provider
-        to the existing account (link), depending on how state was created.
+        Обрабатывает перенаправление от OAuth-провайдера после того, как пользователь предоставил или отклонил доступ.
+        Проверяет параметр state на соответствие ранее сохранённому значению (авторизация или привязка аккаунта),
+        обменивает код авторизации на токены провайдера и в зависимости от типа операции
+        либо выдает новую пару access и refresh токенов,
+        либо привязывает OAuth-провайдера к существующему аккаунту.
       parameters:
-      - description: OAuth provider name (e.g. google, github)
+      - description: 'Название OAuth-провайдера (например: google, github)'
         in: path
         name: provider
         required: true
         type: string
-      - description: Authorization code issued by the provider
+      - description: Код авторизации, полученный от OAuth-провайдера
         in: query
         name: code
         required: true
         type: string
-      - description: Opaque state token, must match value issued in /login or /link
+      - description: Токен состояния (state), должен совпадать со значением, выданным
+          при начале авторизации или привязки аккаунта
         in: query
         name: state
         required: true
         type: string
-      - description: Error code returned by provider if user denied access
+      - description: Код ошибки, возвращаемый OAuth-провайдером, если пользователь
+          отказал в доступе
         in: query
         name: error
         type: string
@@ -639,14 +639,13 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Пара access/refresh токенов"  example({"status": "ok", "access_token":
-            "eyJ...", "refresh_token": "eyJ..."})'
+          description: Успешная авторизация или привязка аккаунта"  example({"status":"ok","access_token":"eyJ...","refresh_token":"eyJ..."})
           schema:
             $ref: '#/definitions/internal_http_server_handlers_oauth_callback.Response'
         "400":
-          description: 'Пользователь отклонил доступ, отсутствуют code/state, невалидный
-            app_id или state истёк/невалиден"  example({"status": "error", "error":
-            "invalid or expired oauth state"})'
+          description: Пользователь отказал в доступе, отсутствуют параметры code/state,
+            указан некорректный app_id либо state недействителен или истёк"  example({"status":"error","error":"invalid
+            or expired oauth state"})
           schema:
             properties:
               error:
@@ -655,8 +654,8 @@ paths:
                 type: string
             type: object
         "403":
-          description: 'Email не подтверждён провайдером"  example({"status": "error",
-            "error": "email not verified by provider"})'
+          description: Email, полученный от OAuth-провайдера, не подтверждён"  example({"status":"error","error":"email
+            not verified by provider"})
           schema:
             properties:
               error:
@@ -665,8 +664,8 @@ paths:
                 type: string
             type: object
         "404":
-          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
-            "unknown oauth provider"})'
+          description: Указанный OAuth-провайдер не поддерживается"  example({"status":"error","error":"unknown
+            oauth provider"})
           schema:
             properties:
               error:
@@ -675,9 +674,9 @@ paths:
                 type: string
             type: object
         "409":
-          description: 'Конфликт: аккаунт с таким email уже существует, либо provider
-            уже привязан"  example({"status": "error", "error": "account with this
-            email already exists, log in and link instead"})'
+          description: 'Конфликт данных: аккаунт с таким email уже существует либо
+            OAuth-провайдер уже привязан к другому аккаунту"  example({"status":"error","error":"account
+            with this email already exists, log in and link instead"})'
           schema:
             properties:
               error:
@@ -686,8 +685,8 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
+          description: Внутренняя ошибка сервера"  example({"status":"error","error":"internal
+            server error"})
           schema:
             properties:
               error:
@@ -695,24 +694,25 @@ paths:
               status:
                 type: string
             type: object
-      summary: OAuth provider callback
+      summary: Callback OAuth-провайдера
       tags:
       - oauth
   /auth/oauth/{provider}/link:
     get:
       description: |-
-        Starts OAuth2 flow to link a third-party provider to the
-        currently authenticated user's account. Requires a valid
-        access token; user_id is taken from claims, not request body,
-        so the link is always bound to the authenticated session.
+        Запускает OAuth2-процесс привязки стороннего OAuth-провайдера к аккаунту
+        текущего аутентифицированного пользователя.
+        Требует действительный access-токен. Идентификатор пользователя
+        извлекается из его данных, а не из параметров запроса,
+        поэтому привязка всегда выполняется для текущей сессии.
       parameters:
-      - description: OAuth provider name (e.g. google, github)
+      - description: 'Название OAuth-провайдера (например: google, github)'
         in: path
         name: provider
         required: true
         type: string
-      - description: Callback URL after auth, must match allowed hosts
-        example: '"https://app.example.com/callback"'
+      - description: URL, на который будет выполнено перенаправление после завершения
+          авторизации. Должен входить в список разрешённых адресов.
         in: query
         name: redirect_uri
         required: true
@@ -721,13 +721,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Ссылка для перехода к провайдеру"  example({"status": "ok",
-            "redirect_url": "https://accounts.google.com/o/oauth2/..."})'
+          description: Ссылка для перехода к OAuth-провайдеру
           schema:
             $ref: '#/definitions/internal_http_server_handlers_oauth_link.Response'
         "400":
-          description: 'Невалидный redirect_uri или app_id"  example({"status": "error",
-            "error": "invalid app id"})'
+          description: Некорректный redirect_uri или app_id
           schema:
             properties:
               error:
@@ -736,8 +734,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access-токен отсутствует, недействителен или истёк
           schema:
             properties:
               error:
@@ -746,8 +743,7 @@ paths:
                 type: string
             type: object
         "404":
-          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
-            "unknown oauth provider"})'
+          description: OAuth-провайдер не поддерживается
           schema:
             properties:
               error:
@@ -756,8 +752,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -767,30 +762,30 @@ paths:
             type: object
       security:
       - BearerAuth: []
-      summary: Link OAuth provider to existing account
+      summary: Привязка OAuth-провайдера к существующему аккаунту
       tags:
       - oauth
   /auth/oauth/{provider}/login:
     get:
       description: |-
-        Starts the OAuth2 authorization flow for the given provider.
-        Validates app_id and redirect_uri against the allowed hosts
-        whitelist, then redirects the client to the provider's
-        authorization URL (state is generated and tracked server-side).
+        Запускает процесс OAuth2-авторизации для указанного OAuth-провайдера.
+        Проверяет корректность app_id и redirect_uri, а также соответствие
+        redirect_uri списку разрешённых адресов.
+        После успешной проверки формирует параметр state и перенаправляет
+        пользователя на страницу авторизации OAuth-провайдера.
       parameters:
-      - description: OAuth provider name (e.g. google, github)
+      - description: 'Название OAuth-провайдера (например: google, github)'
         in: path
         name: provider
         required: true
         type: string
-      - description: ID приложения-клиента
-        example: 1
+      - description: Идентификатор клиентского приложения
         in: query
         name: app_id
         required: true
         type: integer
-      - description: Callback URL after auth, must match allowed hosts
-        example: '"https://app.example.com/callback"'
+      - description: URL для перенаправления после завершения авторизации. Должен
+          входить в список разрешённых адресов.
         in: query
         name: redirect_uri
         required: true
@@ -799,10 +794,9 @@ paths:
       - application/json
       responses:
         "302":
-          description: Redirect to provider's OAuth consent screen
+          description: Перенаправление на страницу авторизации OAuth-провайдера
         "400":
-          description: 'Невалидный app_id или redirect_uri не прошёл валидацию"  example({"status":
-            "error", "error": "redirect_uri host not allowed"})'
+          description: Некорректный app_id или redirect_uri не прошёл проверку
           schema:
             properties:
               error:
@@ -811,8 +805,7 @@ paths:
                 type: string
             type: object
         "404":
-          description: 'Неизвестный OAuth provider"  example({"status": "error", "error":
-            "oauth provider not found"})'
+          description: OAuth-провайдер не поддерживается
           schema:
             properties:
               error:
@@ -821,8 +814,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка при формировании authorization URL"  example({"status":
-            "error", "error": "Internal error"})'
+          description: Не удалось сформировать URL для авторизации
           schema:
             properties:
               error:
@@ -830,45 +822,7 @@ paths:
               status:
                 type: string
             type: object
-      summary: Initiate OAuth login
-      tags:
-      - oauth
-  /auth/oauth/accounts:
-    get:
-      description: |-
-        Returns all third-party OAuth providers linked to the
-        currently authenticated user's account.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 'Список привязанных аккаунтов"  example({"status": "ok", "accounts":
-            [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})'
-          schema:
-            $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Response'
-        "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: List linked OAuth accounts
+      summary: Начало OAuth-авторизации
       tags:
       - oauth
   /auth/password/forgot:
@@ -876,13 +830,15 @@ paths:
       consumes:
       - application/json
       description: |-
-        Initiates a password reset flow for the given email address.
-        Always returns 200 OK regardless of whether the account exists,
-        to prevent user enumeration. If the account exists, a reset link
-        is sent to the provided email; delivery failures are logged
-        server-side and do not affect the response.
+        Запускает процесс сброса пароля для указанного адреса электронной почты.
+        Независимо от того, существует ли аккаунт с указанным email,
+        всегда возвращает ответ с кодом 200, чтобы исключить возможность
+        определения существования аккаунтов.
+        Если аккаунт существует, на указанный email будет отправлено
+        письмо со ссылкой для сброса пароля. Ошибки отправки письма
+        фиксируются на стороне сервера и не влияют на ответ API.
       parameters:
-      - description: Email пользователя
+      - description: Адрес электронной почты пользователя
         in: body
         name: request
         required: true
@@ -895,16 +851,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Запрос принят (не подтверждает существование аккаунта)"  example({"status":
-            "ok"})'
+          description: Запрос успешно принят
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Невалидное тело запроса или ошибка валидации"  example({"status":
-            "error", "error": "field Email must be a valid email"})'
+          description: Некорректное тело запроса или ошибка валидации
           schema:
             properties:
               error:
@@ -913,8 +867,7 @@ paths:
                 type: string
             type: object
         "429":
-          description: 'Превышен лимит запросов"  example({"status": "error", "error":
-            "rate limit exceeded"})'
+          description: Превышен допустимый лимит запросов
           schema:
             properties:
               error:
@@ -923,8 +876,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера (не связана с существованием email)"  example({"status":
-            "error", "error": "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -932,7 +884,7 @@ paths:
               status:
                 type: string
             type: object
-      summary: Request password reset
+      summary: Запрос на сброс пароля
       tags:
       - auth
   /auth/password/reset:
@@ -940,13 +892,17 @@ paths:
       consumes:
       - application/json
       description: |-
-        Resets user password using a reset token received via email.
-        The token must be provided in the request body in "selector.verifier" format,
-        where selector is a UUID and verifier is a URL-safe base64 string.
-        The token is single-use and is invalidated after a successful reset.
-        The new password must be at least 8 characters and differ from the current password.
+        Сбрасывает пароль пользователя с использованием токена,
+        полученного по электронной почте.
+        Токен должен быть передан в теле запроса в формате
+        "selector.verifier", где selector — UUID, а verifier —
+        строка в формате URL-safe Base64.
+        Токен можно использовать только один раз. После успешного
+        сброса пароля он становится недействительным.
+        Новый пароль должен содержать не менее 8 символов и
+        отличаться от текущего пароля.
       parameters:
-      - description: Reset токен и новый пароль
+      - description: Токен для сброса пароля и новый пароль
         in: body
         name: request
         required: true
@@ -961,16 +917,16 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Пароль успешно сброшен"  example({"status": "ok"})'
+          description: Пароль успешно сброшен
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Невалидный формат токена, истёкший/использованный/неверный
-            токен, некорректный пароль, либо пароль совпадает с текущим"  example({"status":
-            "error", "error": "Invalid or expired token"})'
+          description: Некорректный формат токена, токен недействителен, истёк или
+            уже был использован, пароль не соответствует требованиям либо совпадает
+            с текущим
           schema:
             properties:
               error:
@@ -979,8 +935,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -988,7 +943,7 @@ paths:
               status:
                 type: string
             type: object
-      summary: Reset password
+      summary: Сброс пароля
       tags:
       - auth
   /auth/refresh:
@@ -1353,7 +1308,7 @@ paths:
       x-order: 6
   /health:
     get:
-      description: Checks that the service is running and able to process requests.
+      description: Проверяет, запущен ли сервис и готов ли он обрабатывать запросы.
       produces:
       - application/json
       responses:
@@ -1361,7 +1316,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/internal_http_server_handlers_infrastructure_health.Response'
-      summary: Health check
+      summary: Проверка работоспособности
       tags:
       - System
   /metrics:

@@ -28,20 +28,23 @@ type Response struct {
 	resp.Response
 }
 
-// New godoc
-// @Summary      Reset password
-// @Description  Resets user password using a reset token received via email.
-// @Description  The token must be provided in the request body in "selector.verifier" format,
-// @Description  where selector is a UUID and verifier is a URL-safe base64 string.
-// @Description  The token is single-use and is invalidated after a successful reset.
-// @Description  The new password must be at least 8 characters and differ from the current password.
+// @Summary      Сброс пароля
+// @Description  Сбрасывает пароль пользователя с использованием токена,
+// @Description  полученного по электронной почте.
+// @Description  Токен должен быть передан в теле запроса в формате
+// @Description  "selector.verifier", где selector — UUID, а verifier —
+// @Description  строка в формате URL-safe Base64.
+// @Description  Токен можно использовать только один раз. После успешного
+// @Description  сброса пароля он становится недействительным.
+// @Description  Новый пароль должен содержать не менее 8 символов и
+// @Description  отличаться от текущего пароля.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request  body  object{token=string,password=string}  true  "Reset токен и новый пароль"  example({"token": "550e8400-e29b-41d4-a716-446655440000.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "password": "newSecurePass123"})
-// @Success      200  {object}  object{status=string}  "Пароль успешно сброшен"  example({"status": "ok"})
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидный формат токена, истёкший/использованный/неверный токен, некорректный пароль, либо пароль совпадает с текущим"  example({"status": "error", "error": "Invalid or expired token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Param        request  body  object{token=string,password=string}  true  "Токен для сброса пароля и новый пароль"
+// @Success      200  {object}  object{status=string}  "Пароль успешно сброшен"
+// @Failure      400  {object}  object{status=string,error=string}  "Некорректный формат токена, токен недействителен, истёк или уже был использован, пароль не соответствует требованиям либо совпадает с текущим"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/password/reset [post]
 func New(
 	log *slog.Logger,

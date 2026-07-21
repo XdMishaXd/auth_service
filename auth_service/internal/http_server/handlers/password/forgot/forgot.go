@@ -26,21 +26,22 @@ type Response struct {
 	resp.Response
 }
 
-// New godoc
-// @Summary      Request password reset
-// @Description  Initiates a password reset flow for the given email address.
-// @Description  Always returns 200 OK regardless of whether the account exists,
-// @Description  to prevent user enumeration. If the account exists, a reset link
-// @Description  is sent to the provided email; delivery failures are logged
-// @Description  server-side and do not affect the response.
+// @Summary      Запрос на сброс пароля
+// @Description  Запускает процесс сброса пароля для указанного адреса электронной почты.
+// @Description  Независимо от того, существует ли аккаунт с указанным email,
+// @Description  всегда возвращает ответ с кодом 200, чтобы исключить возможность
+// @Description  определения существования аккаунтов.
+// @Description  Если аккаунт существует, на указанный email будет отправлено
+// @Description  письмо со ссылкой для сброса пароля. Ошибки отправки письма
+// @Description  фиксируются на стороне сервера и не влияют на ответ API.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        request  body  object{email=string}  true  "Email пользователя"  example({"email": "user@example.com"})
-// @Success      200  {object}  object{status=string}  "Запрос принят (не подтверждает существование аккаунта)"  example({"status": "ok"})
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса или ошибка валидации"  example({"status": "error", "error": "field Email must be a valid email"})
-// @Failure      429  {object}  object{status=string,error=string}  "Превышен лимит запросов"  example({"status": "error", "error": "rate limit exceeded"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера (не связана с существованием email)"  example({"status": "error", "error": "Internal error"})
+// @Param        request  body  object{email=string}  true  "Адрес электронной почты пользователя"
+// @Success      200  {object}  object{status=string}  "Запрос успешно принят"
+// @Failure      400  {object}  object{status=string,error=string}  "Некорректное тело запроса или ошибка валидации"
+// @Failure      429  {object}  object{status=string,error=string}  "Превышен допустимый лимит запросов"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/password/forgot [post]
 func New(
 	log *slog.Logger,
