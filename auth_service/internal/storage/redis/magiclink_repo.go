@@ -19,6 +19,7 @@ func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, ses
 	data := map[string]interface{}{
 		"user_id":    session.UserID,
 		"app_id":     session.AppID,
+		"action":     string(session.Action),
 		"created_at": time.Now().Unix(),
 	}
 
@@ -56,6 +57,11 @@ func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*m
 	if _, err := fmt.Sscanf(res["app_id"], "%d", &session.AppID); err != nil {
 		return nil, fmt.Errorf("%s: parse app_id: %w", op, err)
 	}
+	action, ok := res["action"]
+	if !ok || action == "" {
+		return nil, fmt.Errorf("%s: pending session missing action: %w", op, storage.ErrPendingSessionNotFound)
+	}
+	session.Action = models.Action(action)
 
 	return session, nil
 }

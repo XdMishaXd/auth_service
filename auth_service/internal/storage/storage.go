@@ -22,6 +22,8 @@ var (
 
 	ErrMagicLinkNotFound      = errors.New("magic link not found")
 	ErrPendingSessionNotFound = errors.New("pending session not found or expired")
+
+	ErrUserAlreadyDeleted = errors.New("user already deleted")
 )
 
 // gcraScript реализует GCRA (Generic Cell Rate Algorithm) одним атомарным

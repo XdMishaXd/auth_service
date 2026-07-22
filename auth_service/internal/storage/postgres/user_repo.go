@@ -2,9 +2,12 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
@@ -40,7 +43,7 @@ func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, er
 	const op = "storage.postgres.User"
 
 	query := `
-		SELECT id, email, username, password_hash, is_verified
+		SELECT id, email, username, password_hash, is_verified, deleted_at
 		FROM users
 		WHERE email = $1;
 	`
@@ -54,6 +57,7 @@ func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, er
 		&u.Username,
 		&u.PassHash,
 		&u.IsVerified,
+		&u.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -67,8 +71,10 @@ func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, er
 }
 
 func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, error) {
+	const op = "storage.postgres.UserByID"
+
 	query := `
-		SELECT id, email, username, password_hash, is_verified
+		SELECT id, email, username, password_hash, is_verified, deleted_at
 		FROM users
 		WHERE id = $1;
 	`
@@ -82,12 +88,13 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, er
 		&u.Username,
 		&u.PassHash,
 		&u.IsVerified,
+		&u.DeletedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, storage.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("user by id %d: %w", id, err)
+		return nil, fmt.Errorf("%s: failed to get user by id: %w", op, err)
 	}
 
 	return &u, nil
@@ -156,6 +163,88 @@ func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error
 	}
 	if res.RowsAffected() == 0 {
 		return storage.ErrUserNotFound
+	}
+
+	return nil
+}
+
+func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
+	const op = "storage.postgres.DeleteAccount"
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("%s: begin tx: %w", op, err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			r.log.Error("rollback failed", sl.Err(err))
+		}
+	}()
+
+	const selectQuery = `
+		SELECT deleted_at
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`
+	var deletedAt *time.Time
+	err = tx.QueryRow(ctx, selectQuery, userID).Scan(&deletedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.ErrUserNotFound
+		}
+		return fmt.Errorf("%s: select user: %w", op, err)
+	}
+
+	if deletedAt != nil {
+		return storage.ErrUserAlreadyDeleted
+	}
+
+	const updateQuery = `
+		UPDATE users
+		SET deleted_at = NOW()
+		WHERE id = $1
+	`
+	res, err := tx.Exec(ctx, updateQuery, userID)
+	if err != nil {
+		return fmt.Errorf("%s: mark deleted: %w", op, err)
+	}
+	if res.RowsAffected() == 0 {
+		return storage.ErrUserNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM refresh_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("%s: delete refresh tokens: %w", op, err)
+	}
+
+	if _, err := tx.Exec(ctx, `DELETE FROM password_reset_tokens WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("%s: delete reset tokens: %w", op, err)
+	}
+
+	const invalidateMagicLinksQuery = `
+		UPDATE magic_links
+		SET used_at = NOW()
+		WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()
+	`
+	if _, err := tx.Exec(ctx, invalidateMagicLinksQuery, userID); err != nil {
+		return fmt.Errorf("%s: invalidate magic links: %w", op, err)
+	}
+
+	payload, err := json.Marshal(map[string]any{"user_id": userID})
+	if err != nil {
+		return fmt.Errorf("%s: marshal outbox payload: %w", op, err)
+	}
+
+	const insertOutboxQuery = `
+		INSERT INTO outbox_events (event_type, payload)
+		VALUES ($1, $2)
+	`
+	if _, err := tx.Exec(ctx, insertOutboxQuery, "user.deleted", payload); err != nil {
+		return fmt.Errorf("%s: insert outbox event: %w", op, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%s: commit: %w", op, err)
 	}
 
 	return nil

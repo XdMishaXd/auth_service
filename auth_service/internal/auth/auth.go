@@ -1,17 +1,18 @@
 package auth
 
 import (
-	"auth_service/internal/lib/jwt"
-	"auth_service/internal/lib/tokens"
-	"auth_service/internal/lib/verification"
-	"auth_service/internal/models"
-	"auth_service/internal/storage"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
+
+	"auth_service/internal/lib/jwt"
+	"auth_service/internal/lib/tokens"
+	"auth_service/internal/lib/verification"
+	"auth_service/internal/models"
+	"auth_service/internal/storage"
 
 	sl "auth_service/internal/lib/logger"
 
@@ -35,7 +36,11 @@ var (
 	ErrNoAuthFactorAvailable = errors.New("no password or linked oauth account to enable 2fa")
 	ErrTwoFAAlreadyEnabled   = errors.New("2fa already enabled")
 	ErrTwoFANotEnabled       = errors.New("2fa is not enabled")
-	ErrDisableConfirmation   = errors.New("invalid confirmation")
+
+	ErrDisableConfirmation = errors.New("invalid confirmation")
+	ErrDeleteConfirmation  = errors.New("invalid confirmation")
+
+	ErrAccountDeleted = errors.New("account deleted")
 )
 
 type Auth struct {
@@ -59,6 +64,7 @@ type LoginResult struct {
 
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (uid int64, err error)
+	DeleteAccount(ctx context.Context, userID int64) error
 
 	SaveRefreshToken(ctx context.Context, id string, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
 	UpdateRefreshToken(ctx context.Context, id uuid.UUID, newTokenHash []byte, oldTokenHash []byte, expiresAt time.Time) error
@@ -98,13 +104,14 @@ type TwoFAService interface {
 		ctx context.Context,
 		userID int64,
 		appID int32,
+		action models.Action,
 		pendingSessionTTL time.Duration,
 	) (string, error)
 
 	Resend(ctx context.Context, sessionID string) error
 
 	VerifyLogin(ctx context.Context, sessionID, rawToken string) (userID int64, appID int32, err error)
-	VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64) error
+	VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64, action models.Action) error
 }
 
 func New(
@@ -147,6 +154,10 @@ func (a *Auth) Login(
 
 		log.Error("failed to get user", sl.Err(err))
 		return nil, err
+	}
+
+	if !user.DeletedAt.IsZero() {
+		return nil, ErrAccountDeleted
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
@@ -572,8 +583,9 @@ func (a *Auth) Disable2FA(
 			return ErrDisableConfirmation
 		}
 
-		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID); err != nil {
+		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID, models.ActionDisable2FA); err != nil {
 			log.Warn("disable 2fa: invalid magic link confirmation", sl.Err(err))
+
 			return ErrDisableConfirmation
 		}
 	}
@@ -608,4 +620,42 @@ func (a *Auth) IssueTokens(ctx context.Context, user *models.User, app *models.A
 	}
 
 	return accessToken, refreshToken, nil
+}
+
+func (a *Auth) DeleteAccount(
+	ctx context.Context,
+	userID int64,
+	password string,
+	sessionID, rawToken string,
+) error {
+	const op = "Auth.DeleteAccount"
+
+	user, err := a.UsrProvider.UserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	switch {
+	case user.PassHash != nil:
+		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
+			return ErrDeleteConfirmation
+		}
+	default:
+		if sessionID == "" || rawToken == "" {
+			return ErrDeleteConfirmation
+		}
+		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID, models.ActionDeleteAccount); err != nil {
+			return ErrDeleteConfirmation
+		}
+	}
+
+	if err := a.UsrSaver.DeleteAccount(ctx, userID); err != nil {
+		if errors.Is(err, storage.ErrUserAlreadyDeleted) {
+			return nil
+		}
+
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
 }

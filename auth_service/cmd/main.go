@@ -20,6 +20,7 @@ import (
 	requestAction "auth_service/internal/http_server/handlers/2fa/request_action_confirmation"
 	resendMagicLink "auth_service/internal/http_server/handlers/2fa/resend_magic_link"
 	verifyMagicLink "auth_service/internal/http_server/handlers/2fa/verify_magic_link"
+	deleteAccount "auth_service/internal/http_server/handlers/account/delete"
 	docsHandler "auth_service/internal/http_server/handlers/infrastructure/docs"
 	"auth_service/internal/http_server/handlers/infrastructure/health"
 	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics"
@@ -422,8 +423,8 @@ func setupRouter(
 					r.With(rateLimiter.MagicLinkDisable()).Post("/disable",
 						disable.New(log, authService, cfg.HTTPServer.HandlersTimeout),
 					)
-					r.With(rateLimiter.MagicLinkRequestActionConfirmation()).Post("/request-action-confirmation",
-						requestAction.New(
+					r.With(rateLimiter.Disable2FARequestConfirmation()).Post("/disable/request-confirmation",
+						requestAction.NewDisable2FA(
 							log,
 							authService,
 							cfg.HTTPServer.HandlersTimeout,
@@ -431,6 +432,25 @@ func setupRouter(
 						),
 					)
 				})
+			})
+		})
+
+		r.Route("/account", func(r chi.Router) {
+			// Authenticated — требуют access-токен.
+			r.Group(func(r chi.Router) {
+				r.Use(claimsParser.RequireAuth(appProvider))
+
+				r.With(rateLimiter.AccountDeleteRequestConfirmation()).Post("/delete/request-confirmation",
+					requestAction.NewDeleteAccount(
+						log,
+						authService,
+						cfg.HTTPServer.HandlersTimeout,
+						cfg.TwoFactorAuth.PendingSessionTTL,
+					),
+				)
+				r.With(rateLimiter.AccountDelete()).Post("/delete",
+					deleteAccount.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
+				)
 			})
 		})
 	})

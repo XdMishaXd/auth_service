@@ -15,7 +15,10 @@ import (
 	"auth_service/internal/storage"
 )
 
-var ErrMagicLinkVerificationFailed = errors.New("lagic link verification failed")
+var (
+	ErrMagicLinkVerificationFailed = errors.New("lagic link verification failed")
+	ErrActionMismatch              = errors.New("action mismatch")
+)
 
 type Publisher interface {
 	SendMessage(ctx context.Context, msg models.Message) error
@@ -115,7 +118,7 @@ func (s *TwoFactorAuthentificator) VerifyLogin(
 ) (userID int64, appID int32, err error) {
 	const op = "twoFactorAuth.Service.VerifyLogin"
 
-	link, err := s.verifyToken(ctx, sessionID, rawToken)
+	link, err := s.verifyToken(ctx, sessionID, rawToken, models.ActionLogin2FA)
 	if err != nil {
 		if errors.Is(err, ErrMagicLinkVerificationFailed) || errors.Is(err, storage.ErrMagicLinkNotFound) {
 			return 0, 0, err
@@ -140,7 +143,7 @@ func (s *TwoFactorAuthentificator) RequestChallenge(
 ) (string, error) {
 	const op = "twoFactorAuth.Service.RequestChallenge"
 
-	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
+	sessionID, err := s.issueMagicLink(ctx, user, appID, models.ActionLogin2FA, pendingSessionTTL)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
@@ -151,10 +154,15 @@ func (s *TwoFactorAuthentificator) RequestChallenge(
 // * VerifyForAction проверяет действующий magic-link код как подтверждение
 // чувствительного действия (например, disable 2FA для oauth-only
 // пользователя без пароля).
-func (s *TwoFactorAuthentificator) VerifyForAction(ctx context.Context, sessionID, rawToken string, expectedUserID int64) error {
+func (s *TwoFactorAuthentificator) VerifyForAction(
+	ctx context.Context,
+	sessionID, rawToken string,
+	expectedUserID int64,
+	expectedAction models.Action,
+) error {
 	const op = "twoFactorAuth.Service.VerifyForAction"
 
-	link, err := s.verifyToken(ctx, sessionID, rawToken)
+	link, err := s.verifyToken(ctx, sessionID, rawToken, expectedAction)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -206,6 +214,7 @@ func (s *TwoFactorAuthentificator) RequestActionConfirmation(
 	ctx context.Context,
 	userID int64,
 	appID int32,
+	action models.Action,
 	pendingSessionTTL time.Duration,
 ) (string, error) {
 	const op = "twoFactorAuth.Service.RequestActionConfirmation"
@@ -215,7 +224,7 @@ func (s *TwoFactorAuthentificator) RequestActionConfirmation(
 		return "", fmt.Errorf("%s: get user: %w", op, err)
 	}
 
-	sessionID, err := s.issueMagicLink(ctx, user, appID, pendingSessionTTL)
+	sessionID, err := s.issueMagicLink(ctx, user, appID, action, pendingSessionTTL)
 	if err != nil {
 		s.log.Error("failed to issue action confirmation",
 			slog.String("op", op),
@@ -264,6 +273,7 @@ func (s *TwoFactorAuthentificator) issueMagicLink(
 	ctx context.Context,
 	user *models.User,
 	appID int32,
+	action models.Action,
 	pendingSessionTTL time.Duration,
 ) (sessionID string, err error) {
 	sessionID, err = generateSessionID()
@@ -274,6 +284,7 @@ func (s *TwoFactorAuthentificator) issueMagicLink(
 	session := models.PendingSession{
 		UserID: user.ID,
 		AppID:  appID,
+		Action: action,
 	}
 
 	if err := s.redis.SetPendingSession(ctx, sessionID, session, pendingSessionTTL); err != nil {
@@ -294,7 +305,11 @@ func (s *TwoFactorAuthentificator) issueMagicLink(
 }
 
 // * verifyToken — общее ядро проверки magic-link токена.
-func (s *TwoFactorAuthentificator) verifyToken(ctx context.Context, sessionID, rawToken string) (*models.MagicLink, error) {
+func (s *TwoFactorAuthentificator) verifyToken(
+	ctx context.Context,
+	sessionID, rawToken string,
+	expectedAction models.Action,
+) (*models.MagicLink, error) {
 	const op = "twoFactorAuth.Service.verifyToken"
 
 	pending, err := s.redis.GetPendingSession(ctx, sessionID)
@@ -304,6 +319,11 @@ func (s *TwoFactorAuthentificator) verifyToken(ctx context.Context, sessionID, r
 		}
 
 		return nil, fmt.Errorf("%s: pending session: %w", op, err)
+	}
+
+	if pending.Action != expectedAction {
+		// Токен не трогаем — это не проблема токена, это неверный контекст запроса.
+		return nil, fmt.Errorf("%s: %w", op, ErrActionMismatch)
 	}
 
 	_, verifier, ok := splitToken(rawToken)

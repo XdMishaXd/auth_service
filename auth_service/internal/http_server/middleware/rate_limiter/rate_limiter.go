@@ -104,8 +104,16 @@ func (rl *RateLimit) MagicLinkDisable() func(http.Handler) http.Handler {
 	return rl.byUserID("2fa_magiclink_disable", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
 }
 
-func (rl *RateLimit) MagicLinkRequestActionConfirmation() func(http.Handler) http.Handler {
-	return rl.byUserID("2fa_magiclink_request_action", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+func (rl *RateLimit) Disable2FARequestConfirmation() func(http.Handler) http.Handler {
+	return rl.byUserID("2fa_disable_request_confirmation", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
+func (rl *RateLimit) AccountDeleteRequestConfirmation() func(http.Handler) http.Handler {
+	return rl.byUserID("account_delete_request_confirmation", rateLimit.Policy{Burst: 3, Rate: 10, Period: time.Hour})
+}
+
+func (rl *RateLimit) AccountDelete() func(http.Handler) http.Handler {
+	return rl.byUserID("account_delete", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Hour})
 }
 
 func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {

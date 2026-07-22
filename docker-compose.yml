@@ -224,8 +224,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.retention.time=15d"
       - "--storage.tsdb.retention.size=2GB"
-    ports:
-      - "9090:9090"
+    expose:
+      - "9090"
     depends_on:
       - postgres_exporter
       - redis_exporter

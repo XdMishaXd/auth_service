@@ -6,12 +6,21 @@ import (
 	"github.com/google/uuid"
 )
 
+type Action string
+
+const (
+	ActionLogin2FA      Action = "login_2fa"
+	ActionDisable2FA    Action = "disable_2fa"
+	ActionDeleteAccount Action = "delete_account"
+)
+
 type User struct {
 	ID         int64
 	Email      string
 	Username   string
 	PassHash   []byte
 	IsVerified bool
+	DeletedAt  time.Time
 }
 
 type OAuthAccount struct {
@@ -88,6 +97,7 @@ type TwoFAStatus struct {
 type PendingSession struct {
 	UserID int64
 	AppID  int32
+	Action Action
 }
 
 // * IsExpired проверяет, истек ли срок действия ссылки
