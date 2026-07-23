@@ -15,6 +15,220 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/account": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Помечает аккаунт как удалённый (soft delete, grace period 7\nдней). Требует подтверждения: паролем (если он установлен)\nлибо magic-link кодом, полученным через\n/account/delete/request-confirmation (для oauth-only\nпользователей без пароля). Все refresh-токены и активные\nсессии немедленно отзываются. Идемпотентно — повторный вызов\nна уже удалённый аккаунт не является ошибкой.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Удалить аккаунт",
+                "parameters": [
+                    {
+                        "description": "Пароль ИЛИ session_id+code",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_account_delete.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Аккаунт удалён"
+                    },
+                    "400": {
+                        "description": "Невалидный запрос",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует/невалиден, либо неверный пароль/код подтверждения",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Превышен лимит запросов",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/account/delete/request-confirmation": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Отправляет magic-link код на email текущего пользователя для\nподтверждения удаления аккаунта. Требуется только для\noauth-only пользователей без пароля — у них нет иного\nспособа подтвердить чувствительное действие. Возвращает\nsession_id, который затем передаётся вместе с кодом из письма\nв /account/delete.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Запросить подтверждение удаления аккаунта через magic link",
+                "responses": {
+                    "200": {
+                        "description": "Код отправлен на email\"  example({\"status\": \"ok\", \"session_id\": \"abcDEF123...\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/2fa/disable/request-confirmation": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Отправляет magic-link код на email текущего пользователя для\nподтверждения отключения 2FA. Требуется только для\noauth-only пользователей без пароля — у них нет иного\nспособа подтвердить чувствительное действие. Возвращает\nsession_id, который затем передаётся вместе с кодом из письма\nв /auth/2fa/disable.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "2fa"
+                ],
+                "summary": "Запросить подтверждение отключения 2FA через magic link",
+                "responses": {
+                    "200": {
+                        "description": "Код отправлен на email\"  example({\"status\": \"ok\", \"session_id\": \"abcDEF123...\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/auth/2fa/magic-link/disable": {
             "post": {
                 "security": [
@@ -154,67 +368,6 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "2FA уже включена, либо нет ни одного доступного фактора для будущего disable\"  example({\"status\": \"error\", \"error\": \"no password or linked oauth account to enable 2fa\"})",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "error": {
-                                    "type": "string"
-                                },
-                                "status": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "error": {
-                                    "type": "string"
-                                },
-                                "status": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/2fa/magic-link/request-action-confirmation": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Отправляет magic-link код на email текущего пользователя для\nподтверждения чувствительного действия (например, отключения\n2FA у oauth-only пользователя без пароля). Возвращает\nsession_id, который затем передаётся вместе с кодом из письма\nв соответствующий эндпоинт действия (например, /disable).",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "2fa"
-                ],
-                "summary": "Запросить подтверждение действия через magic link",
-                "responses": {
-                    "200": {
-                        "description": "Код отправлен на email\"  example({\"status\": \"ok\", \"session_id\": \"abcDEF123...\"})",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "session_id": {
-                                    "type": "string"
-                                },
-                                "status": {
-                                    "type": "string"
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -637,6 +790,59 @@ const docTemplate = `{
                     }
                 },
                 "x-order": 4
+            }
+        },
+        "/auth/oauth/accounts": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Возвращает все OAuth-провайдеры, привязанные к аккаунту\nтекущего аутентифицированного пользователя.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oauth"
+                ],
+                "summary": "Список привязанных OAuth-аккаунтов",
+                "responses": {
+                    "200": {
+                        "description": "Список привязанных аккаунтов\"  example({\"status\": \"ok\", \"accounts\": [{\"provider\": \"google\", \"email\": \"user@example.com\", \"created_at\": \"2026-01-15T10:00:00Z\"}]})",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_oauth_accounts.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         "/auth/oauth/{provider}": {
@@ -1581,6 +1787,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "internal_http_server_handlers_account_delete.Request": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "session_id": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_http_server_handlers_infrastructure_health.Response": {
             "type": "object",
             "properties": {

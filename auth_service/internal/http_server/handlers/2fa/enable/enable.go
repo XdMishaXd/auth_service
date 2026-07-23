@@ -9,11 +9,12 @@ import (
 
 	"auth_service/internal/auth"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
+	"auth_service/internal/storage"
 
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 
@@ -64,12 +65,14 @@ func New(
 			case errors.Is(err, auth.ErrTwoFAAlreadyEnabled):
 				render.Status(r, http.StatusConflict)
 				render.JSON(w, r, resp.Error("2fa already enabled"))
-
 				return
 			case errors.Is(err, auth.ErrNoAuthFactorAvailable):
 				render.Status(r, http.StatusConflict)
 				render.JSON(w, r, resp.Error("no password or linked oauth account to enable 2fa"))
-
+				return
+			case errors.Is(err, storage.ErrUserNotFound):
+				render.Status(r, http.StatusNotFound)
+				render.JSON(w, r, resp.Error("user not found"))
 				return
 			}
 

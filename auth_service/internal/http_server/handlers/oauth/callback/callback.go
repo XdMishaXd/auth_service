@@ -13,8 +13,8 @@ import (
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/storage"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 
@@ -119,6 +119,8 @@ func mapOAuthCallbackError(err error) (int, string) {
 		return http.StatusConflict, "you already have this provider linked"
 	case errors.Is(err, auth.ErrInvalidAppID):
 		return http.StatusBadRequest, "invalid app id"
+	case errors.Is(err, oauth.ErrAccountPendingDeletion):
+		return http.StatusGone, "Account deleted"
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}

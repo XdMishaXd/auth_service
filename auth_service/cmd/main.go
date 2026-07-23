@@ -50,8 +50,8 @@ import (
 	"auth_service/internal/storage/postgres"
 	"auth_service/internal/storage/redis"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-playground/validator/v10"
 	"golang.org/x/sync/errgroup"
 )
@@ -448,7 +448,7 @@ func setupRouter(
 						cfg.TwoFactorAuth.PendingSessionTTL,
 					),
 				)
-				r.With(rateLimiter.AccountDelete()).Post("/delete",
+				r.With(rateLimiter.AccountDelete()).Delete("/",
 					deleteAccount.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
 				)
 			})

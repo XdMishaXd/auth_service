@@ -13,7 +13,7 @@ import (
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/storage"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"

@@ -228,7 +228,7 @@ func (r *PostgresRepo) ResetPassword(
 	}
 
 	const updatePasswordQuery = `
-    UPDATE users SET password_hash = $1 WHERE id = $2
+    UPDATE users SET password_hash = $1 WHERE id = $2 AND deleted_at IS NULL
   `
 	res, err = tx.Exec(ctx, updatePasswordQuery, newPasswordHash, userID)
 	if err != nil {

@@ -156,7 +156,7 @@ func (a *Auth) Login(
 		return nil, err
 	}
 
-	if !user.DeletedAt.IsZero() {
+	if user.DeletedAt != nil {
 		return nil, ErrAccountDeleted
 	}
 
@@ -650,11 +650,14 @@ func (a *Auth) DeleteAccount(
 	}
 
 	if err := a.UsrSaver.DeleteAccount(ctx, userID); err != nil {
-		if errors.Is(err, storage.ErrUserAlreadyDeleted) {
+		switch {
+		case errors.Is(err, storage.ErrUserAlreadyDeleted):
 			return nil
+		case errors.Is(err, storage.ErrUserNotFound):
+			return err
+		default:
+			return fmt.Errorf("%s: %w", op, err)
 		}
-
-		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil

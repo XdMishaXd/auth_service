@@ -99,7 +99,7 @@ func (r *PostgresRepo) EnableMagicLink2FA(ctx context.Context, userID int64) err
 		SET is_2fa_enabled = TRUE,
 			two_fa_method = 'magic_link',
 			two_fa_enabled_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	result, err := r.pool.Exec(ctx, query, userID)
@@ -123,7 +123,7 @@ func (r *PostgresRepo) DisableMagicLink2FA(ctx context.Context, userID int64) er
 		SET is_2fa_enabled = FALSE,
 			two_fa_method = NULL,
 			two_fa_enabled_at = NULL
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	result, err := r.pool.Exec(ctx, query, userID)
@@ -144,7 +144,7 @@ func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*models.T
 	query := `
 		SELECT is_2fa_enabled, two_fa_method, (password_hash IS NOT NULL) AS has_password
 		FROM users
-		WHERE id = $1
+		WHERE id = $1 AND deleted_at IS NULL
 	`
 
 	status := &models.TwoFAStatus{}

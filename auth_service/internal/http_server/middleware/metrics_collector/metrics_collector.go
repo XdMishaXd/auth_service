@@ -7,7 +7,7 @@ import (
 
 	"auth_service/internal/metrics"
 
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 )
 
 // New возвращает middleware, пишущий http_requests_total и

@@ -12,7 +12,7 @@ import (
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/models"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 

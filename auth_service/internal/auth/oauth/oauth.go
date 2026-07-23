@@ -16,11 +16,12 @@ import (
 )
 
 var (
-	ErrOAuthStateInvalid     = errors.New("invalid or expired oauth state")
-	ErrOAuthEmailNotVerified = errors.New("email not verified by provider")
-	ErrOAuthProviderNotFound = errors.New("unknown oauth provider")
-	ErrOAuthAccountConflict  = errors.New("account with this email already exists, log in and link instead")
-	ErrOAuthLastAuthMethod   = errors.New("cannot unlink last authentication method")
+	ErrOAuthStateInvalid      = errors.New("invalid or expired oauth state")
+	ErrOAuthEmailNotVerified  = errors.New("email not verified by provider")
+	ErrOAuthProviderNotFound  = errors.New("unknown oauth provider")
+	ErrOAuthAccountConflict   = errors.New("account with this email already exists, log in and link instead")
+	ErrOAuthLastAuthMethod    = errors.New("cannot unlink last authentication method")
+	ErrAccountPendingDeletion = errors.New("account with this email is pending deletion")
 )
 
 // OAuthProvider — внешний клиент конкретного провайдера (Google/GitHub).
@@ -184,6 +185,11 @@ func (s *OAuthService) Callback(
 		user, err := s.auth.UsrProvider.UserByID(ctx, payload.UserID)
 		if err != nil {
 			return "", "", fmt.Errorf("%s: load linked user: %w", op, err)
+		}
+		log.Info("debug user loaded", slog.Int64("id", user.ID), slog.Any("deleted_at", user.DeletedAt))
+
+		if user.DeletedAt != nil {
+			return "", "", ErrAccountPendingDeletion
 		}
 
 		return s.auth.IssueTokens(ctx, user, app)

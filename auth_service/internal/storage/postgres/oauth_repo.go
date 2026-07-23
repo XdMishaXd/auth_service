@@ -31,6 +31,7 @@ func (r *PostgresRepo) SaveOAuthAccount(
 	_, err := r.pool.Exec(ctx, query, userID, provider, providerUserID, email)
 	if err != nil {
 		var pgErr *pgconn.PgError
+
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			switch pgErr.ConstraintName {
 			case "uq_oauth_provider_user":
@@ -136,7 +137,7 @@ func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, pro
 	// Это и закрывает гонку: без FOR UPDATE обе транзакции могли бы
 	// прочитать "ещё есть привязки" параллельно и обе пройти проверку.
 	var hasPassword bool
-	lockUserQuery := `
+	const lockUserQuery = `
 		SELECT password_hash IS NOT NULL
 		FROM users
 		WHERE id = $1
@@ -151,7 +152,7 @@ func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, pro
 
 	if !hasPassword {
 		var remaining int
-		countQuery := `
+		const countQuery = `
 			SELECT COUNT(*)
 			FROM oauth_accounts
 			WHERE user_id = $1 AND provider != $2

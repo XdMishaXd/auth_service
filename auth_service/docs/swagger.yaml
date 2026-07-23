@@ -1,5 +1,14 @@
 basePath: /
 definitions:
+  internal_http_server_handlers_account_delete.Request:
+    properties:
+      password:
+        type: string
+      session_id:
+        type: string
+      token:
+        type: string
+    type: object
   internal_http_server_handlers_infrastructure_health.Response:
     properties:
       error:
@@ -54,6 +63,166 @@ info:
   title: Auth Service API
   version: "1.0"
 paths:
+  /account:
+    delete:
+      consumes:
+      - application/json
+      description: |-
+        Помечает аккаунт как удалённый (soft delete, grace period 7
+        дней). Требует подтверждения: паролем (если он установлен)
+        либо magic-link кодом, полученным через
+        /account/delete/request-confirmation (для oauth-only
+        пользователей без пароля). Все refresh-токены и активные
+        сессии немедленно отзываются. Идемпотентно — повторный вызов
+        на уже удалённый аккаунт не является ошибкой.
+      parameters:
+      - description: Пароль ИЛИ session_id+code
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_http_server_handlers_account_delete.Request'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Аккаунт удалён
+        "400":
+          description: Невалидный запрос
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: Access token отсутствует/невалиден, либо неверный пароль/код
+            подтверждения
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "429":
+          description: Превышен лимит запросов
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Удалить аккаунт
+      tags:
+      - account
+  /account/delete/request-confirmation:
+    post:
+      description: |-
+        Отправляет magic-link код на email текущего пользователя для
+        подтверждения удаления аккаунта. Требуется только для
+        oauth-only пользователей без пароля — у них нет иного
+        способа подтвердить чувствительное действие. Возвращает
+        session_id, который затем передаётся вместе с кодом из письма
+        в /account/delete.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
+            "abcDEF123..."})'
+          schema:
+            properties:
+              session_id:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запросить подтверждение удаления аккаунта через magic link
+      tags:
+      - account
+  /auth/2fa/disable/request-confirmation:
+    post:
+      description: |-
+        Отправляет magic-link код на email текущего пользователя для
+        подтверждения отключения 2FA. Требуется только для
+        oauth-only пользователей без пароля — у них нет иного
+        способа подтвердить чувствительное действие. Возвращает
+        session_id, который затем передаётся вместе с кодом из письма
+        в /auth/2fa/disable.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
+            "abcDEF123..."})'
+          schema:
+            properties:
+              session_id:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "Internal error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Запросить подтверждение отключения 2FA через magic link
+      tags:
+      - 2fa
   /auth/2fa/magic-link/disable:
     post:
       consumes:
@@ -173,52 +342,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Включить magic-link 2FA
-      tags:
-      - 2fa
-  /auth/2fa/magic-link/request-action-confirmation:
-    post:
-      description: |-
-        Отправляет magic-link код на email текущего пользователя для
-        подтверждения чувствительного действия (например, отключения
-        2FA у oauth-only пользователя без пароля). Возвращает
-        session_id, который затем передаётся вместе с кодом из письма
-        в соответствующий эндпоинт действия (например, /disable).
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
-            "abcDEF123..."})'
-          schema:
-            properties:
-              session_id:
-                type: string
-              status:
-                type: string
-            type: object
-        "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-        "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
-          schema:
-            properties:
-              error:
-                type: string
-              status:
-                type: string
-            type: object
-      security:
-      - BearerAuth: []
-      summary: Запросить подтверждение действия через magic link
       tags:
       - 2fa
   /auth/2fa/magic-link/resend:
@@ -823,6 +946,44 @@ paths:
                 type: string
             type: object
       summary: Начало OAuth-авторизации
+      tags:
+      - oauth
+  /auth/oauth/accounts:
+    get:
+      description: |-
+        Возвращает все OAuth-провайдеры, привязанные к аккаунту
+        текущего аутентифицированного пользователя.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'Список привязанных аккаунтов"  example({"status": "ok", "accounts":
+            [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})'
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Response'
+        "401":
+          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
+            "error", "error": "invalid or expired access token"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
+            "internal server error"})'
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Список привязанных OAuth-аккаунтов
       tags:
       - oauth
   /auth/password/forgot:

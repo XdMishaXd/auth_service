@@ -12,7 +12,7 @@ import (
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 

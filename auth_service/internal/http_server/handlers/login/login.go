@@ -12,7 +12,7 @@ import (
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/storage"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
@@ -133,7 +133,11 @@ func New(
 				return
 			case errors.Is(err, auth.ErrEmailNotVerified):
 				render.Status(r, http.StatusForbidden)
-				render.JSON(w, r, resp.Error("email is not verified"))
+				render.JSON(w, r, resp.Error("Email is not verified"))
+				return
+			case errors.Is(err, auth.ErrAccountDeleted):
+				render.Status(r, http.StatusGone)
+				render.JSON(w, r, resp.Error("Account deleted"))
 				return
 			}
 

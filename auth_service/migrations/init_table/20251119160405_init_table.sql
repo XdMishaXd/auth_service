@@ -30,19 +30,6 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX idx_users_deleted_at ON users (id)
 WHERE deleted_at IS NULL;
 -- ==========================================================
--- Outbox (delete-account event delivery guarantee)
--- ==========================================================
-CREATE TABLE outbox_events (
-  id BIGSERIAL CONSTRAINT pk_outbox_events PRIMARY KEY,
-  event_type TEXT NOT NULL,
-  payload JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  published_at TIMESTAMPTZ,
-  attempts INT NOT NULL DEFAULT 0
-);
-CREATE INDEX idx_outbox_unpublished ON outbox_events (id)
-WHERE published_at IS NULL;
--- ==========================================================
 -- Applications
 -- ==========================================================
 CREATE TABLE IF NOT EXISTS apps (
@@ -139,7 +126,6 @@ $$;
 -- +goose StatementEnd
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS outbox_events;
 DROP FUNCTION IF EXISTS cleanup_expired_magic_links();
 DROP TABLE IF EXISTS magic_links;
 DROP TABLE IF EXISTS oauth_accounts;
@@ -148,6 +134,5 @@ DROP TABLE IF EXISTS refresh_tokens;
 DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 DROP FUNCTION IF EXISTS set_updated_at();
 DROP TABLE IF EXISTS apps;
-DROP INDEX IF EXISTS idx_users_deleted_at;
 DROP TABLE IF EXISTS users;
 -- +goose StatementEnd

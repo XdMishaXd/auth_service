@@ -11,8 +11,9 @@ import (
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/storage"
 
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
@@ -46,7 +47,7 @@ type Response struct {
 // @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует/невалиден, либо неверный пароль/код подтверждения"
 // @Failure      429  {object}  object{status=string,error=string}  "Превышен лимит запросов"
 // @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
-// @Router       /account/delete [post]
+// @Router       /account [delete]
 func New(
 	log *slog.Logger,
 	validate *validator.Validate,
@@ -126,17 +127,18 @@ func New(
 			switch {
 			case errors.Is(err, auth.ErrDeleteConfirmation):
 				log.Warn("delete account: confirmation failed", slog.Int64("user_id", claims.UserID))
-
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("invalid confirmation"))
-
+				return
+			case errors.Is(err, storage.ErrUserNotFound):
+				log.Warn("user not found", slog.Int64("user_id", claims.UserID))
+				render.Status(r, http.StatusNotFound)
+				render.JSON(w, r, resp.Error("user not found"))
 				return
 			default:
 				log.Error("failed to delete account", sl.Err(err), slog.Int64("user_id", claims.UserID))
-
 				render.Status(r, http.StatusInternalServerError)
 				render.JSON(w, r, resp.Error("Internal error"))
-
 				return
 			}
 		}

@@ -10,8 +10,8 @@ import (
 	resp "auth_service/internal/lib/api/response"
 	"auth_service/internal/lib/validation/oauthutil"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 

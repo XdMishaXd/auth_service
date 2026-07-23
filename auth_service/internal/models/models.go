@@ -20,7 +20,7 @@ type User struct {
 	Username   string
 	PassHash   []byte
 	IsVerified bool
-	DeletedAt  time.Time
+	DeletedAt  *time.Time
 }
 
 type OAuthAccount struct {

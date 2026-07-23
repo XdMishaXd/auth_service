@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -106,7 +105,7 @@ func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (int64, er
 	query := `
 		SELECT id
 		FROM users
-		WHERE email = $1;
+		WHERE email = $1 AND deleted_at IS NULL;
 	`
 
 	var id int64
@@ -130,7 +129,7 @@ func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (i
 	query := `	
 		SELECT id, is_verified
 		FROM users
-		WHERE email = $1;
+		WHERE email = $1 AND deleted_at IS NULL;
 	`
 	row := r.pool.QueryRow(ctx, query, email)
 
@@ -155,7 +154,7 @@ func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (i
 func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.SetEmailVerified"
 
-	query := `UPDATE users SET is_verified = TRUE WHERE id = $1`
+	query := `UPDATE users SET is_verified = TRUE WHERE id = $1 AND deleted_at IS NULL;`
 
 	res, err := r.pool.Exec(ctx, query, userID)
 	if err != nil {
@@ -193,6 +192,7 @@ func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return storage.ErrUserNotFound
 		}
+
 		return fmt.Errorf("%s: select user: %w", op, err)
 	}
 
@@ -228,19 +228,6 @@ func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
 	`
 	if _, err := tx.Exec(ctx, invalidateMagicLinksQuery, userID); err != nil {
 		return fmt.Errorf("%s: invalidate magic links: %w", op, err)
-	}
-
-	payload, err := json.Marshal(map[string]any{"user_id": userID})
-	if err != nil {
-		return fmt.Errorf("%s: marshal outbox payload: %w", op, err)
-	}
-
-	const insertOutboxQuery = `
-		INSERT INTO outbox_events (event_type, payload)
-		VALUES ($1, $2)
-	`
-	if _, err := tx.Exec(ctx, insertOutboxQuery, "user.deleted", payload); err != nil {
-		return fmt.Errorf("%s: insert outbox event: %w", op, err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
