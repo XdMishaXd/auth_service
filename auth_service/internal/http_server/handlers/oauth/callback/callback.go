@@ -20,8 +20,8 @@ import (
 
 type Response struct {
 	resp.Response
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token" example:"fkajeDJ1p3FJ..."`
+	RefreshToken string `json:"refresh_token" example:"abcDEF123..."`
 }
 
 // @Summary      Callback OAuth-провайдера
@@ -36,12 +36,12 @@ type Response struct {
 // @Param        code      query  string  true  "Код авторизации, полученный от OAuth-провайдера"
 // @Param        state     query  string  true  "Токен состояния (state), должен совпадать со значением, выданным при начале авторизации или привязки аккаунта"
 // @Param        error     query  string  false "Код ошибки, возвращаемый OAuth-провайдером, если пользователь отказал в доступе"
-// @Success      200  {object}  Response  "Успешная авторизация или привязка аккаунта"  example({"status":"ok","access_token":"eyJ...","refresh_token":"eyJ..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отказал в доступе, отсутствуют параметры code/state, указан некорректный app_id либо state недействителен или истёк"  example({"status":"error","error":"invalid or expired oauth state"})
-// @Failure      403  {object}  object{status=string,error=string}  "Email, полученный от OAuth-провайдера, не подтверждён"  example({"status":"error","error":"email not verified by provider"})
-// @Failure      404  {object}  object{status=string,error=string}  "Указанный OAuth-провайдер не поддерживается"  example({"status":"error","error":"unknown oauth provider"})
-// @Failure      409  {object}  object{status=string,error=string}  "Конфликт данных: аккаунт с таким email уже существует либо OAuth-провайдер уже привязан к другому аккаунту"  example({"status":"error","error":"account with this email already exists, log in and link instead"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status":"error","error":"internal server error"})
+// @Success      200  {object}  Response  "Успешная авторизация или привязка аккаунта"
+// @Failure      400  {object}  object{status=string,error=string}  "Пользователь отказал в доступе, отсутствуют параметры code/state, указан некорректный app_id либо state недействителен или истёк"
+// @Failure      403  {object}  object{status=string,error=string}  "Email, полученный от OAuth-провайдера, не подтверждён"
+// @Failure      404  {object}  object{status=string,error=string}  "Указанный OAuth-провайдер не поддерживается"
+// @Failure      409  {object}  object{status=string,error=string}  "Конфликт данных: аккаунт с таким email уже существует либо OAuth-провайдер уже привязан к другому аккаунту"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/oauth/{provider}/callback [get]
 func New(
 	log *slog.Logger,

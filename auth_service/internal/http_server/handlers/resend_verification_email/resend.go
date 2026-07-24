@@ -20,7 +20,7 @@ import (
 )
 
 type Request struct {
-	Email string `json:"email" validate:"required,email"`
+	Email string `json:"email" validate:"required,email" example:"example@domain.com"`
 }
 
 type Response struct {
@@ -62,10 +62,10 @@ type Response struct {
 // @Accept       json
 // @Produce      json
 // @Param        email  body  object{email=string}  true  "Email пользователя"  example({"email": "user@example.com"})
-// @Success      200  {object}  object{status=string}  "Письмо отправлено (или email уже подтвержден)"  example({"status": "ok"})
-// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации: некорректный email формат"  example({"status": "error", "error": "Email must be a valid email address"})
-// @Failure      404  {object}  object{status=string,error=string}  "Пользователь не найден"  example({"status": "error", "error": "User not found"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Success      200  {object}  object{status=string}  "Письмо отправлено (или email уже подтвержден)"
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации: некорректный email формат"
+// @Failure      404  {object}  object{status=string,error=string}  "Пользователь не найден"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/verify/resend [post]
 // @x-order      6
 func New(

@@ -20,8 +20,8 @@ import (
 )
 
 type Request struct {
-	Token   string `json:"token" validate:"required,reset_token_format"`
-	NewPass string `json:"password" validate:"required,min=8"`
+	Token   string `json:"token" validate:"required,reset_token_format" example:"abcDEF123..."`
+	NewPass string `json:"password" validate:"required,min=8" example:"SecurePass123!"`
 }
 
 type Response struct {

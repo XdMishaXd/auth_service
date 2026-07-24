@@ -186,8 +186,6 @@ func (s *OAuthService) Callback(
 		if err != nil {
 			return "", "", fmt.Errorf("%s: load linked user: %w", op, err)
 		}
-		log.Info("debug user loaded", slog.Int64("id", user.ID), slog.Any("deleted_at", user.DeletedAt))
-
 		if user.DeletedAt != nil {
 			return "", "", ErrAccountPendingDeletion
 		}
@@ -203,15 +201,22 @@ func (s *OAuthService) Callback(
 		if err != nil {
 			return "", "", fmt.Errorf("%s: load user: %w", op, err)
 		}
+		if user.DeletedAt != nil {
+			return "", "", ErrAccountPendingDeletion
+		}
+
 		return s.auth.IssueTokens(ctx, user, app)
 
 	case errors.Is(err, storage.ErrOAuthAccountNotFound):
-		// Провайдерского аккаунта нет — проверяем, не занят ли email локально
-		// или другим провайдером, прежде чем создавать нового юзера.
-		if _, err := s.auth.UsrProvider.User(ctx, oauthUser.Email); err == nil {
-			return "", "", ErrOAuthAccountConflict
-		} else if !errors.Is(err, storage.ErrUserNotFound) {
-			return "", "", fmt.Errorf("%s: check existing user: %w", op, err)
+		if user, err := s.auth.UsrProvider.UserByEmail(ctx, oauthUser.Email); err == nil {
+			switch {
+			case user.DeletedAt != nil:
+				return "", "", ErrAccountPendingDeletion
+			case !errors.Is(err, storage.ErrUserNotFound):
+				return "", "", fmt.Errorf("%s: check existing user: %w", op, err)
+			default:
+				return "", "", ErrOAuthAccountConflict
+			}
 		}
 
 		username := deriveUsername(oauthUser.Email)

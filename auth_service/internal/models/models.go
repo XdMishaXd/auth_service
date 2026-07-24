@@ -9,9 +9,10 @@ import (
 type Action string
 
 const (
-	ActionLogin2FA      Action = "login_2fa"
-	ActionDisable2FA    Action = "disable_2fa"
-	ActionDeleteAccount Action = "delete_account"
+	ActionLogin2FA       Action = "login_2fa"
+	ActionDisable2FA     Action = "disable_2fa"
+	ActionDeleteAccount  Action = "delete_account"
+	ActionRestoreAccount Action = "restore_account"
 )
 
 type User struct {

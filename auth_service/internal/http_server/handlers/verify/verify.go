@@ -50,11 +50,11 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        token  query  string  true  "JWT токен верификации из email"  example(eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0MiwiZXhwIjoxNzA2MTIzNDU2fQ.signature)
-// @Success      200  {object}  object{status=string}  "Email успешно подтвержден, можно входить в систему"  example({"status": "ok"})
-// @Failure      400  {object}  object{status=string,error=string}  "Токен отсутствует в URL"  example({"status": "error", "error": "missing token"})
-// @Failure      401  {object}  object{status=string,error=string}  "Токен невалидный, истек или уже использован"  example({"status": "error", "error": "invalid or expired token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal error"})
+// @Param        token  query  string  true  "JWT токен верификации из email"
+// @Success      200  {object}  object{status=string}  "Email успешно подтвержден, можно входить в систему"
+// @Failure      400  {object}  object{status=string,error=string}  "Токен отсутствует в URL"
+// @Failure      401  {object}  object{status=string,error=string}  "Токен невалидный, истек или уже использован"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/verify [get]
 // @x-order      5
 func New(

@@ -21,9 +21,9 @@ type Response struct {
 }
 
 type Request struct {
-	Password  string `json:"password,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Token     string `json:"token,omitempty"`
+	Password  string `json:"password,omitempty" example:"SecurePass123!"`
+	SessionID string `json:"session_id,omitempty" example:"abcDEF123..."`
+	Token     string `json:"token,omitempty" example:"fkajeDJ1p3FJ..."`
 }
 
 // New godoc
@@ -36,11 +36,11 @@ type Request struct {
 // @Security     BearerAuth
 // @Accept       json
 // @Produce      json
-// @Param        request  body  object{password=string,session_id=string,token=string}  false  "Подтверждение отключения (один из наборов полей)"  example({"password": "SecurePass123!"})
-// @Success      200  {object}  object{status=string}  "2FA отключена"  example({"status": "ok"})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк, либо неверное подтверждение (пароль/magic-link код)"  example({"status": "error", "error": "invalid confirmation"})
-// @Failure      409  {object}  object{status=string,error=string}  "2FA не включена"  example({"status": "error", "error": "2fa is not enabled"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Param        request  body  object{password=string,session_id=string,token=string}  false  "Подтверждение отключения (один из наборов полей)"
+// @Success      200  {object}  object{status=string}  "2FA отключена"
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк, либо неверное подтверждение (пароль/magic-link код)"
+// @Failure      409  {object}  object{status=string,error=string}  "2FA не включена"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/2fa/magic-link/disable [post]
 func New(
 	log *slog.Logger,

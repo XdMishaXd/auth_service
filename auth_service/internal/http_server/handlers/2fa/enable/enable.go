@@ -31,10 +31,10 @@ type Response struct {
 // @Tags         2fa
 // @Security     BearerAuth
 // @Produce      json
-// @Success      200  {object}  object{status=string}  "2FA включена"  example({"status": "ok"})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      409  {object}  object{status=string,error=string}  "2FA уже включена, либо нет ни одного доступного фактора для будущего disable"  example({"status": "error", "error": "no password or linked oauth account to enable 2fa"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Success      200  {object}  object{status=string}  "2FA включена"
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"
+// @Failure      409  {object}  object{status=string,error=string}  "2FA уже включена, либо нет ни одного доступного фактора для будущего disable"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/2fa/magic-link/enable [post]
 func New(
 	log *slog.Logger,

@@ -39,6 +39,7 @@ var (
 
 	ErrDisableConfirmation = errors.New("invalid confirmation")
 	ErrDeleteConfirmation  = errors.New("invalid confirmation")
+	ErrRestoreConfirmation = errors.New("invalid confirmation")
 
 	ErrAccountDeleted = errors.New("account deleted")
 )
@@ -65,6 +66,7 @@ type LoginResult struct {
 type UserSaver interface {
 	SaveUser(ctx context.Context, email string, username string, passHash []byte) (uid int64, err error)
 	DeleteAccount(ctx context.Context, userID int64) error
+	RestoreAccount(ctx context.Context, userID int64) error
 
 	SaveRefreshToken(ctx context.Context, id string, userID int64, appID int32, tokenHash []byte, expiresAt time.Time) error
 	UpdateRefreshToken(ctx context.Context, id uuid.UUID, newTokenHash []byte, oldTokenHash []byte, expiresAt time.Time) error
@@ -75,9 +77,9 @@ type UserSaver interface {
 }
 
 type UserProvider interface {
-	User(ctx context.Context, email string) (*models.User, error)
+	UserByEmail(ctx context.Context, email string) (*models.User, error)
 	UserByID(ctx context.Context, id int64) (*models.User, error)
-	UserByEmail(ctx context.Context, email string) (int64, error)
+	UserIDByEmail(ctx context.Context, email string) (int64, error)
 
 	RefreshTokenByID(ctx context.Context, id uuid.UUID) (*models.RefreshToken, error)
 
@@ -145,7 +147,7 @@ func (a *Auth) Login(
 
 	log := a.Log.With(slog.String("op", op))
 
-	user, err := a.UsrProvider.User(ctx, email)
+	user, err := a.UsrProvider.UserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found")
@@ -405,7 +407,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 		slog.String("op", op),
 	)
 
-	uid, err := a.UsrProvider.UserByEmail(ctx, email)
+	uid, err := a.UsrProvider.UserIDByEmail(ctx, email)
 	if err != nil {
 		return "", err
 	}
@@ -661,4 +663,95 @@ func (a *Auth) DeleteAccount(
 	}
 
 	return nil
+}
+
+// RestoreAccount отменяет soft-delete, если юзер подтвердил личность
+// паролем (если он есть) либо magic-link кодом (oauth-only).
+func (a *Auth) RestoreAccount(
+	ctx context.Context,
+	email, password string,
+	sessionID, rawToken string,
+) error {
+	const op = "Auth.RestoreAccount"
+
+	log := a.Log.With(slog.String("op", op))
+
+	user, err := a.UsrProvider.UserByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, storage.ErrUserNotFound) {
+			return storage.ErrUserNotFound
+		}
+		log.Error("failed to get user", sl.Err(err))
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if user.DeletedAt == nil {
+		return storage.ErrNothingToRestore
+	}
+
+	switch {
+	case user.PassHash != nil:
+		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
+			log.Warn("restore account: invalid password", slog.Int64("user_id", user.ID))
+			return ErrRestoreConfirmation
+		}
+	default:
+		if sessionID == "" || rawToken == "" {
+			return ErrRestoreConfirmation
+		}
+		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, user.ID, models.ActionRestoreAccount); err != nil {
+			log.Warn("restore account: invalid magic link confirmation", sl.Err(err))
+			return ErrRestoreConfirmation
+		}
+	}
+
+	if err := a.UsrSaver.RestoreAccount(ctx, user.ID); err != nil {
+		switch {
+		case errors.Is(err, storage.ErrNothingToRestore):
+			return storage.ErrNothingToRestore
+		case errors.Is(err, storage.ErrUserNotFound):
+			return err
+		default:
+			log.Error("failed to restore account", sl.Err(err), slog.Int64("user_id", user.ID))
+			return fmt.Errorf("%s: %w", op, err)
+		}
+	}
+
+	log.Info("account restored", slog.Int64("user_id", user.ID))
+
+	return nil
+}
+
+// RequestRestoreConfirmation — то же, что RequestActionConfirmation, но
+// принимает email вместо userID, так как soft-deleted юзер не аутентифицирован.
+func (a *Auth) RequestRestoreConfirmation(
+	ctx context.Context,
+	email string,
+	appID int32,
+	pendingSessionTTL time.Duration,
+) (string, error) {
+	const op = "Auth.RequestRestoreConfirmation"
+
+	user, err := a.UsrProvider.UserByEmail(ctx, email)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	if user.DeletedAt == nil {
+		return "", storage.ErrNothingToRestore
+	}
+
+	if _, err := a.AppProvider.App(ctx, appID); err != nil {
+		return "", ErrInvalidAppID
+	}
+
+	// appID нужен для issueMagicLink — restore не привязан к конкретному
+	// app в том же смысле, что login; берём appID=0 или отдельный подход.
+	// Требует решения: как auth-service узнаёт appID на неаутентифицированном restore-запросе.
+	sessionID, err := a.TwoFA.RequestActionConfirmation(ctx, user.ID, appID, models.ActionRestoreAccount, pendingSessionTTL)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return sessionID, nil
 }

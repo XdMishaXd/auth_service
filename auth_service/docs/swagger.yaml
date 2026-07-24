@@ -3,26 +3,63 @@ definitions:
   internal_http_server_handlers_account_delete.Request:
     properties:
       password:
+        example: SecurePass123!
         type: string
       session_id:
+        example: abcDEF123...
         type: string
       token:
+        example: fkajeDJ1p3FJ...
         type: string
+    type: object
+  internal_http_server_handlers_account_request_restore_confirmation.Request:
+    properties:
+      app_id:
+        example: 1
+        type: integer
+      email:
+        example: example@domain.com
+        type: string
+    required:
+    - app_id
+    - email
+    type: object
+  internal_http_server_handlers_account_restore.Request:
+    properties:
+      email:
+        example: example@domain.com
+        type: string
+      password:
+        example: SecurePass123!
+        type: string
+      session_id:
+        example: fkajeDJ1p3FJ...
+        type: string
+      token:
+        example: abcDEF123...
+        type: string
+    required:
+    - email
     type: object
   internal_http_server_handlers_infrastructure_health.Response:
     properties:
       error:
+        example: error
         type: string
       status:
+        example: ok
         type: string
     type: object
   internal_http_server_handlers_oauth_accounts.Account:
     properties:
       created_at:
+        example: "2026-07-24T12:00:00Z"
         type: string
       email:
+        example: example@domain.com
         type: string
       provider:
+        example: google
         type: string
     type: object
   internal_http_server_handlers_oauth_accounts.Response:
@@ -32,28 +69,37 @@ definitions:
           $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Account'
         type: array
       error:
+        example: error
         type: string
       status:
+        example: ok
         type: string
     type: object
   internal_http_server_handlers_oauth_callback.Response:
     properties:
       access_token:
+        example: fkajeDJ1p3FJ...
         type: string
       error:
+        example: error
         type: string
       refresh_token:
+        example: abcDEF123...
         type: string
       status:
+        example: ok
         type: string
     type: object
   internal_http_server_handlers_oauth_link.Response:
     properties:
       error:
+        example: error
         type: string
       redirect_url:
+        example: https://www.google.com/
         type: string
       status:
+        example: ok
         type: string
     type: object
 host: localhost:8082
@@ -142,8 +188,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
-            "abcDEF123..."})'
+          description: Код отправлен на email
           schema:
             properties:
               session_id:
@@ -152,8 +197,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access token отсутствует, невалиден или истёк
           schema:
             properties:
               error:
@@ -162,8 +206,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -174,6 +217,126 @@ paths:
       security:
       - BearerAuth: []
       summary: Запросить подтверждение удаления аккаунта через magic link
+      tags:
+      - account
+  /account/restore:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Отменяет soft-delete, если grace period (7 дней) ещё не
+        истёк. Требует подтверждения: паролем (если он установлен)
+        либо magic-link кодом, полученным через
+        /account/restore/request-confirmation (для oauth-only
+        пользователей без пароля). Неаутентифицированный эндпоинт.
+      parameters:
+      - description: Email + (пароль ИЛИ session_id+code)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_http_server_handlers_account_restore.Request'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Аккаунт восстановлен
+        "400":
+          description: Невалидный запрос
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "401":
+          description: Неверный пароль или код подтверждения, аккаунт не найден, не
+            был удалён или grace period истёк
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "429":
+          description: Превышен лимит запросов
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Восстановить удалённый аккаунт
+      tags:
+      - account
+  /account/restore/request-confirmation:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Отправляет magic-link код на email указанного (soft-deleted)
+        аккаунта для подтверждения восстановления. Неаутентифицированный
+        эндпоинт — юзер не может залогиниться, пока аккаунт удалён.
+        Возвращает session_id для последующего запроса в /account/restore.
+      parameters:
+      - description: Email и app_id
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_http_server_handlers_account_request_restore_confirmation.Request'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Код отправлен на email
+          schema:
+            properties:
+              session_id:
+                type: string
+              status:
+                type: string
+            type: object
+        "400":
+          description: Невалидный запрос
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "429":
+          description: Превышен лимит запросов
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+        "500":
+          description: Внутренняя ошибка сервера
+          schema:
+            properties:
+              error:
+                type: string
+              status:
+                type: string
+            type: object
+      summary: Запросить подтверждение восстановления аккаунта через magic link
       tags:
       - account
   /auth/2fa/disable/request-confirmation:
@@ -189,8 +352,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Код отправлен на email"  example({"status": "ok", "session_id":
-            "abcDEF123..."})'
+          description: Код отправлен на email
           schema:
             properties:
               session_id:
@@ -199,8 +361,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access token отсутствует, невалиден или истёк
           schema:
             properties:
               error:
@@ -209,8 +370,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -249,16 +409,15 @@ paths:
       - application/json
       responses:
         "200":
-          description: '2FA отключена"  example({"status": "ok"})'
+          description: 2FA отключена
           schema:
             properties:
               status:
                 type: string
             type: object
         "401":
-          description: 'Access token отсутствует, невалиден или истёк, либо неверное
-            подтверждение (пароль/magic-link код)"  example({"status": "error", "error":
-            "invalid confirmation"})'
+          description: Access token отсутствует, невалиден или истёк, либо неверное
+            подтверждение (пароль/magic-link код)
           schema:
             properties:
               error:
@@ -267,8 +426,7 @@ paths:
                 type: string
             type: object
         "409":
-          description: '2FA не включена"  example({"status": "error", "error": "2fa
-            is not enabled"})'
+          description: 2FA не включена
           schema:
             properties:
               error:
@@ -277,8 +435,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -302,15 +459,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: '2FA включена"  example({"status": "ok"})'
+          description: 2FA включена
           schema:
             properties:
               status:
                 type: string
             type: object
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access token отсутствует, невалиден или истёк
           schema:
             properties:
               error:
@@ -319,9 +475,8 @@ paths:
                 type: string
             type: object
         "409":
-          description: '2FA уже включена, либо нет ни одного доступного фактора для
-            будущего disable"  example({"status": "error", "error": "no password or
-            linked oauth account to enable 2fa"})'
+          description: 2FA уже включена, либо нет ни одного доступного фактора для
+            будущего disable
           schema:
             properties:
               error:
@@ -330,8 +485,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -367,16 +521,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Новая ссылка отправлена (либо попытка предпринята)"  example({"status":
-            "ok"})'
+          description: Новая ссылка отправлена (либо попытка предпринята)
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Невалидное тело запроса"  example({"status": "error", "error":
-            "field SessionID is required"})'
+          description: Невалидное тело запроса
           schema:
             properties:
               error:
@@ -385,9 +537,8 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Pending-сессия не найдена или истекла — нужно начать логин
-            заново"  example({"status": "error", "error": "session expired, please
-            log in again"})'
+          description: Pending-сессия не найдена или истекла — нужно начать логин
+            заново
           schema:
             properties:
               error:
@@ -396,8 +547,7 @@ paths:
                 type: string
             type: object
         "429":
-          description: 'Слишком частые запросы на повторную отправку"  example({"status":
-            "error", "error": "rate limit exceeded"})'
+          description: Слишком частые запросы на повторную отправку
           schema:
             properties:
               error:
@@ -406,8 +556,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -443,8 +592,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: '2FA подтверждена, выданы токены"  example({"status": "ok",
-            "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          description: 2FA подтверждена, выданы токены
           schema:
             properties:
               access_token:
@@ -455,8 +603,7 @@ paths:
                 type: string
             type: object
         "400":
-          description: 'Невалидное тело запроса или ошибка валидации"  example({"status":
-            "error", "error": "field Token is required"})'
+          description: Невалидное тело запроса или ошибка валидации
           schema:
             properties:
               error:
@@ -465,8 +612,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Токен невалиден, истёк, уже использован, либо сессия истекла"  example({"status":
-            "error", "error": "invalid or expired confirmation"})'
+          description: Токен невалиден, истёк, уже использован, либо сессия истекла
           schema:
             properties:
               error:
@@ -475,8 +621,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -536,8 +681,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Пароль верен, требуется подтверждение magic-link 2FA"  example({"status":
-            "ok", "two_factor_pending": true, "session_id": "abcDEF123..."})'
+          description: Пароль верен, требуется подтверждение magic-link 2FA
           schema:
             properties:
               session_id:
@@ -548,8 +692,7 @@ paths:
                 type: boolean
             type: object
         "400":
-          description: 'Ошибка валидации или невалидный app_id"  example({"status":
-            "error", "error": "Invalid app id"})'
+          description: Ошибка валидации или невалидный app_id
           schema:
             properties:
               error:
@@ -558,8 +701,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Неверные credentials"  example({"status": "error", "error":
-            "Invalid credentials"})'
+          description: Неверные credentials
           schema:
             properties:
               error:
@@ -568,8 +710,7 @@ paths:
                 type: string
             type: object
         "403":
-          description: 'Email не подтвержден"  example({"status": "error", "error":
-            "email is not verified"})'
+          description: Email не подтвержден
           schema:
             properties:
               error:
@@ -578,8 +719,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка"  example({"status": "error", "error": "Internal
-            error"})'
+          description: Внутренняя ошибка
           schema:
             properties:
               error:
@@ -630,15 +770,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Успешный выход из системы"  example({"status": "ok"})'
+          description: Успешный выход из системы
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Ошибка валидации: токен не передан или некорректный JSON"  example({"status":
-            "error", "error": "refresh_token is required"})'
+          description: 'Ошибка валидации: токен не передан или некорректный JSON'
           schema:
             properties:
               error:
@@ -647,8 +786,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Невалидный или истекший refresh токен"  example({"status":
-            "error", "error": "Invalid credentials"})'
+          description: Невалидный или истекший refresh токен
           schema:
             properties:
               error:
@@ -657,8 +795,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -762,13 +899,12 @@ paths:
       - application/json
       responses:
         "200":
-          description: Успешная авторизация или привязка аккаунта"  example({"status":"ok","access_token":"eyJ...","refresh_token":"eyJ..."})
+          description: Успешная авторизация или привязка аккаунта
           schema:
             $ref: '#/definitions/internal_http_server_handlers_oauth_callback.Response'
         "400":
           description: Пользователь отказал в доступе, отсутствуют параметры code/state,
-            указан некорректный app_id либо state недействителен или истёк"  example({"status":"error","error":"invalid
-            or expired oauth state"})
+            указан некорректный app_id либо state недействителен или истёк
           schema:
             properties:
               error:
@@ -777,8 +913,7 @@ paths:
                 type: string
             type: object
         "403":
-          description: Email, полученный от OAuth-провайдера, не подтверждён"  example({"status":"error","error":"email
-            not verified by provider"})
+          description: Email, полученный от OAuth-провайдера, не подтверждён
           schema:
             properties:
               error:
@@ -787,8 +922,7 @@ paths:
                 type: string
             type: object
         "404":
-          description: Указанный OAuth-провайдер не поддерживается"  example({"status":"error","error":"unknown
-            oauth provider"})
+          description: Указанный OAuth-провайдер не поддерживается
           schema:
             properties:
               error:
@@ -798,8 +932,7 @@ paths:
             type: object
         "409":
           description: 'Конфликт данных: аккаунт с таким email уже существует либо
-            OAuth-провайдер уже привязан к другому аккаунту"  example({"status":"error","error":"account
-            with this email already exists, log in and link instead"})'
+            OAuth-провайдер уже привязан к другому аккаунту'
           schema:
             properties:
               error:
@@ -808,8 +941,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: Внутренняя ошибка сервера"  example({"status":"error","error":"internal
-            server error"})
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -957,13 +1089,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Список привязанных аккаунтов"  example({"status": "ok", "accounts":
-            [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})'
+          description: Список привязанных аккаунтов
           schema:
             $ref: '#/definitions/internal_http_server_handlers_oauth_accounts.Response'
         "401":
-          description: 'Access token отсутствует, невалиден или истёк"  example({"status":
-            "error", "error": "invalid or expired access token"})'
+          description: Access token отсутствует, невалиден или истёк
           schema:
             properties:
               error:
@@ -972,8 +1102,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal server error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -1160,8 +1289,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Новая пара токенов"  example({"status": "ok", "access_token":
-            "eyJhbGc...", "refresh_token": "eyJhbGc..."})'
+          description: Новая пара токенов
           schema:
             properties:
               access_token:
@@ -1172,8 +1300,7 @@ paths:
                 type: string
             type: object
         "400":
-          description: 'Ошибка валидации"  example({"status": "error", "error": "refresh_token
-            is required"})'
+          description: Ошибка валидации
           schema:
             properties:
               error:
@@ -1182,8 +1309,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Невалидный или истекший токен"  example({"status": "error",
-            "error": "Invalid credentials"})'
+          description: Невалидный или истекший токен
           schema:
             properties:
               error:
@@ -1192,8 +1318,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка"  example({"status": "error", "error": "Internal
-            error"})'
+          description: Внутренняя ошибка
           schema:
             properties:
               error:
@@ -1252,8 +1377,7 @@ paths:
       - application/json
       responses:
         "201":
-          description: 'Пользователь успешно создан, письмо отправлено"  example({"status":
-            "ok", "user_id": 42})'
+          description: Пользователь успешно создан, письмо отправлено
           schema:
             properties:
               status:
@@ -1263,8 +1387,7 @@ paths:
             type: object
         "400":
           description: 'Ошибка валидации: некорректный email, слишком короткий пароль
-            или отсутствуют обязательные поля"  example({"status": "error", "error":
-            "Email must be a valid email address"})'
+            или отсутствуют обязательные поля'
           schema:
             properties:
               error:
@@ -1273,8 +1396,7 @@ paths:
                 type: string
             type: object
         "409":
-          description: 'Пользователь с таким email или username уже существует"  example({"status":
-            "error", "error": "User with this email already exists"})'
+          description: Пользователь с таким email или username уже существует
           schema:
             properties:
               error:
@@ -1283,8 +1405,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом"  example({"status":
-            "error", "error": "Internal error"})'
+          description: 'Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом'
           schema:
             properties:
               error:
@@ -1329,7 +1450,6 @@ paths:
         - `500`: Ошибка базы данных
       parameters:
       - description: JWT токен верификации из email
-        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0MiwiZXhwIjoxNzA2MTIzNDU2fQ.signature
         in: query
         name: token
         required: true
@@ -1338,16 +1458,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Email успешно подтвержден, можно входить в систему"  example({"status":
-            "ok"})'
+          description: Email успешно подтвержден, можно входить в систему
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Токен отсутствует в URL"  example({"status": "error", "error":
-            "missing token"})'
+          description: Токен отсутствует в URL
           schema:
             properties:
               error:
@@ -1356,8 +1474,7 @@ paths:
                 type: string
             type: object
         "401":
-          description: 'Токен невалидный, истек или уже использован"  example({"status":
-            "error", "error": "invalid or expired token"})'
+          description: Токен невалидный, истек или уже использован
           schema:
             properties:
               error:
@@ -1366,8 +1483,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:
@@ -1426,16 +1542,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: 'Письмо отправлено (или email уже подтвержден)"  example({"status":
-            "ok"})'
+          description: Письмо отправлено (или email уже подтвержден)
           schema:
             properties:
               status:
                 type: string
             type: object
         "400":
-          description: 'Ошибка валидации: некорректный email формат"  example({"status":
-            "error", "error": "Email must be a valid email address"})'
+          description: 'Ошибка валидации: некорректный email формат'
           schema:
             properties:
               error:
@@ -1444,8 +1558,7 @@ paths:
                 type: string
             type: object
         "404":
-          description: 'Пользователь не найден"  example({"status": "error", "error":
-            "User not found"})'
+          description: Пользователь не найден
           schema:
             properties:
               error:
@@ -1454,8 +1567,7 @@ paths:
                 type: string
             type: object
         "500":
-          description: 'Внутренняя ошибка сервера"  example({"status": "error", "error":
-            "Internal error"})'
+          description: Внутренняя ошибка сервера
           schema:
             properties:
               error:

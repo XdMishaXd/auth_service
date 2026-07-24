@@ -18,17 +18,17 @@ import (
 )
 
 type Request struct {
-	Email string `json:"email" validate:"required,email"`
-	Pass  string `json:"password" validate:"required"`
-	AppID int32  `json:"app_id" validate:"required"`
+	Email string `json:"email" validate:"required,email" example:"example@domain.com"`
+	Pass  string `json:"password" validate:"required" example:"SecurePass123!"`
+	AppID int32  `json:"app_id" validate:"required,gt=0" example:"1"`
 }
 
 type Response struct {
 	resp.Response
-	AccessToken      string `json:"access_token,omitempty"`
-	RefreshToken     string `json:"refresh_token,omitempty"`
-	TwoFactorPending bool   `json:"two_factor_pending,omitempty"`
-	SessionID        string `json:"session_id,omitempty"`
+	AccessToken      string `json:"access_token,omitempty" example:"abcDEF123..."`
+	RefreshToken     string `json:"refresh_token,omitempty" example:"fkajeDJ1p3FJ..."`
+	TwoFactorPending bool   `json:"two_factor_pending,omitempty" example:"true"`
+	SessionID        string `json:"session_id,omitempty" example:"afsjeDJ1p3FJ..."`
 }
 
 // New godoc
@@ -62,13 +62,13 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        credentials  body  object{email=string,password=string,app_id=int}  true  "Данные для входа"  example({"email": "user@example.com", "password": "SecurePass123!", "app_id": 1})
-// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "Успешная аутентификация без 2FA"  example({"status": "ok", "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})
-// @Success      200  {object}  object{status=string,two_factor_pending=bool,session_id=string}  "Пароль верен, требуется подтверждение magic-link 2FA"  example({"status": "ok", "two_factor_pending": true, "session_id": "abcDEF123..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации или невалидный app_id"  example({"status": "error", "error": "Invalid app id"})
-// @Failure      401  {object}  object{status=string,error=string}  "Неверные credentials"  example({"status": "error", "error": "Invalid credentials"})
-// @Failure      403  {object}  object{status=string,error=string}  "Email не подтвержден"  example({"status": "error", "error": "email is not verified"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка"  example({"status": "error", "error": "Internal error"})
+// @Param        credentials  body  object{email=string,password=string,app_id=int}  true  "Данные для входа"
+// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "Успешная аутентификация без 2FA"
+// @Success      200  {object}  object{status=string,two_factor_pending=bool,session_id=string}  "Пароль верен, требуется подтверждение magic-link 2FA"
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации или невалидный app_id"
+// @Failure      401  {object}  object{status=string,error=string}  "Неверные credentials"
+// @Failure      403  {object}  object{status=string,error=string}  "Email не подтвержден"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка"
 // @Router       /auth/login [post]
 // @x-order      1
 func New(

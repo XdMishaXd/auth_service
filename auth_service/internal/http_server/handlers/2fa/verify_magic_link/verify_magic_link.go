@@ -19,14 +19,14 @@ import (
 )
 
 type Request struct {
-	SessionID string `json:"session_id" validate:"required"`
-	Token     string `json:"token" validate:"required"`
+	SessionID string `json:"session_id" validate:"required" example:"abcDEF123..."`
+	Token     string `json:"token" validate:"required" example:"fkajeDJ1p3FJ..."`
 }
 
 type Response struct {
 	resp.Response
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token" example:"asffhr3FJ..."`
+	RefreshToken string `json:"refresh_token" example:"dgsadfgDJ1p3FJ..."`
 }
 
 // New godoc
@@ -38,11 +38,11 @@ type Response struct {
 // @Tags         2fa
 // @Accept       json
 // @Produce      json
-// @Param        request  body  object{session_id=string,token=string}  true  "Данные для подтверждения"  example({"session_id": "abcDEF123...", "token": "sel123.ver456..."})
-// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "2FA подтверждена, выданы токены"  example({"status": "ok", "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса или ошибка валидации"  example({"status": "error", "error": "field Token is required"})
-// @Failure      401  {object}  object{status=string,error=string}  "Токен невалиден, истёк, уже использован, либо сессия истекла"  example({"status": "error", "error": "invalid or expired confirmation"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Param        request  body  object{session_id=string,token=string}  true  "Данные для подтверждения"
+// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "2FA подтверждена, выданы токены"
+// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса или ошибка валидации"
+// @Failure      401  {object}  object{status=string,error=string}  "Токен невалиден, истёк, уже использован, либо сессия истекла"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/2fa/magic-link/verify [post]
 func New(
 	log *slog.Logger,

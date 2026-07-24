@@ -38,7 +38,7 @@ func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, pas
 	return id, nil
 }
 
-func (r *PostgresRepo) User(ctx context.Context, email string) (*models.User, error) {
+func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (*models.User, error) {
 	const op = "storage.postgres.User"
 
 	query := `
@@ -99,7 +99,7 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, er
 	return &u, nil
 }
 
-func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (int64, error) {
+func (r *PostgresRepo) UserIDByEmail(ctx context.Context, email string) (int64, error) {
 	const op = "storage.postgres.UserByEmail"
 
 	query := `
@@ -228,6 +228,63 @@ func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
 	`
 	if _, err := tx.Exec(ctx, invalidateMagicLinksQuery, userID); err != nil {
 		return fmt.Errorf("%s: invalidate magic links: %w", op, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("%s: commit: %w", op, err)
+	}
+
+	return nil
+}
+
+// * RestoreAccount снимает флаг soft-delete, если grace period ещё не истёк.
+func (r *PostgresRepo) RestoreAccount(ctx context.Context, userID int64) error {
+	const op = "storage.postgres.RestoreAccount"
+
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("%s: begin tx: %w", op, err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			r.log.Error("rollback failed", sl.Err(err))
+		}
+	}()
+
+	const selectQuery = `
+		SELECT deleted_at
+		FROM users
+		WHERE id = $1
+		FOR UPDATE
+	`
+	var deletedAt *time.Time
+	err = tx.QueryRow(ctx, selectQuery, userID).Scan(&deletedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return storage.ErrUserNotFound
+		}
+
+		return fmt.Errorf("%s: select user: %w", op, err)
+	}
+
+	if deletedAt == nil {
+		return storage.ErrNothingToRestore
+	}
+	if deletedAt.Before(time.Now().Add(-7 * 24 * time.Hour)) {
+		return storage.ErrRestoreWindowExpired
+	}
+
+	const updateQuery = `
+		UPDATE users
+		SET deleted_at = NULL
+		WHERE id = $1
+	`
+	res, err := tx.Exec(ctx, updateQuery, userID)
+	if err != nil {
+		return fmt.Errorf("%s: restore: %w", op, err)
+	}
+	if res.RowsAffected() == 0 {
+		return storage.ErrUserNotFound
 	}
 
 	if err := tx.Commit(ctx); err != nil {

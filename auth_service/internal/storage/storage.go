@@ -24,6 +24,9 @@ var (
 	ErrPendingSessionNotFound = errors.New("pending session not found or expired")
 
 	ErrUserAlreadyDeleted = errors.New("user already deleted")
+
+	ErrNothingToRestore     = errors.New("account is not deleted")
+	ErrRestoreWindowExpired = errors.New("restore window has expired")
 )
 
 // gcraScript реализует GCRA (Generic Cell Rate Algorithm) одним атомарным

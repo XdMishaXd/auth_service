@@ -124,7 +124,7 @@ const docTemplate = `{
                 "summary": "Запросить подтверждение удаления аккаунта через magic link",
                 "responses": {
                     "200": {
-                        "description": "Код отправлен на email\"  example({\"status\": \"ok\", \"session_id\": \"abcDEF123...\"})",
+                        "description": "Код отправлен на email",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -138,7 +138,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "description": "Access token отсутствует, невалиден или истёк",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -152,7 +152,178 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/account/restore": {
+            "post": {
+                "description": "Отменяет soft-delete, если grace period (7 дней) ещё не\nистёк. Требует подтверждения: паролем (если он установлен)\nлибо magic-link кодом, полученным через\n/account/restore/request-confirmation (для oauth-only\nпользователей без пароля). Неаутентифицированный эндпоинт.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Восстановить удалённый аккаунт",
+                "parameters": [
+                    {
+                        "description": "Email + (пароль ИЛИ session_id+code)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_account_restore.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Аккаунт восстановлен"
+                    },
+                    "400": {
+                        "description": "Невалидный запрос",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Неверный пароль или код подтверждения, аккаунт не найден, не был удалён или grace period истёк",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Превышен лимит запросов",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/account/restore/request-confirmation": {
+            "post": {
+                "description": "Отправляет magic-link код на email указанного (soft-deleted)\nаккаунта для подтверждения восстановления. Неаутентифицированный\nэндпоинт — юзер не может залогиниться, пока аккаунт удалён.\nВозвращает session_id для последующего запроса в /account/restore.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "account"
+                ],
+                "summary": "Запросить подтверждение восстановления аккаунта через magic link",
+                "parameters": [
+                    {
+                        "description": "Email и app_id",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_account_request_restore_confirmation.Request"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Код отправлен на email",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "session_id": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Невалидный запрос",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Превышен лимит запросов",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "string"
+                                },
+                                "status": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -185,7 +356,7 @@ const docTemplate = `{
                 "summary": "Запросить подтверждение отключения 2FA через magic link",
                 "responses": {
                     "200": {
-                        "description": "Код отправлен на email\"  example({\"status\": \"ok\", \"session_id\": \"abcDEF123...\"})",
+                        "description": "Код отправлен на email",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -199,7 +370,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "description": "Access token отсутствует, невалиден или истёк",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -213,7 +384,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -270,7 +441,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "2FA отключена\"  example({\"status\": \"ok\"})",
+                        "description": "2FA отключена",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -281,7 +452,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Access token отсутствует, невалиден или истёк, либо неверное подтверждение (пароль/magic-link код)\"  example({\"status\": \"error\", \"error\": \"invalid confirmation\"})",
+                        "description": "Access token отсутствует, невалиден или истёк, либо неверное подтверждение (пароль/magic-link код)",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -295,7 +466,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "2FA не включена\"  example({\"status\": \"error\", \"error\": \"2fa is not enabled\"})",
+                        "description": "2FA не включена",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -309,7 +480,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -342,7 +513,7 @@ const docTemplate = `{
                 "summary": "Включить magic-link 2FA",
                 "responses": {
                     "200": {
-                        "description": "2FA включена\"  example({\"status\": \"ok\"})",
+                        "description": "2FA включена",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -353,7 +524,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "description": "Access token отсутствует, невалиден или истёк",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -367,7 +538,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "2FA уже включена, либо нет ни одного доступного фактора для будущего disable\"  example({\"status\": \"error\", \"error\": \"no password or linked oauth account to enable 2fa\"})",
+                        "description": "2FA уже включена, либо нет ни одного доступного фактора для будущего disable",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -381,7 +552,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -428,7 +599,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Новая ссылка отправлена (либо попытка предпринята)\"  example({\"status\": \"ok\"})",
+                        "description": "Новая ссылка отправлена (либо попытка предпринята)",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -439,7 +610,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Невалидное тело запроса\"  example({\"status\": \"error\", \"error\": \"field SessionID is required\"})",
+                        "description": "Невалидное тело запроса",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -453,7 +624,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Pending-сессия не найдена или истекла — нужно начать логин заново\"  example({\"status\": \"error\", \"error\": \"session expired, please log in again\"})",
+                        "description": "Pending-сессия не найдена или истекла — нужно начать логин заново",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -467,7 +638,7 @@ const docTemplate = `{
                         }
                     },
                     "429": {
-                        "description": "Слишком частые запросы на повторную отправку\"  example({\"status\": \"error\", \"error\": \"rate limit exceeded\"})",
+                        "description": "Слишком частые запросы на повторную отправку",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -481,7 +652,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -531,7 +702,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "2FA подтверждена, выданы токены\"  example({\"status\": \"ok\", \"access_token\": \"eyJhbGc...\", \"refresh_token\": \"eyJhbGc...\"})",
+                        "description": "2FA подтверждена, выданы токены",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -548,7 +719,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Невалидное тело запроса или ошибка валидации\"  example({\"status\": \"error\", \"error\": \"field Token is required\"})",
+                        "description": "Невалидное тело запроса или ошибка валидации",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -562,7 +733,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Токен невалиден, истёк, уже использован, либо сессия истекла\"  example({\"status\": \"error\", \"error\": \"invalid or expired confirmation\"})",
+                        "description": "Токен невалиден, истёк, уже использован, либо сессия истекла",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -576,7 +747,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -629,7 +800,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Пароль верен, требуется подтверждение magic-link 2FA\"  example({\"status\": \"ok\", \"two_factor_pending\": true, \"session_id\": \"abcDEF123...\"})",
+                        "description": "Пароль верен, требуется подтверждение magic-link 2FA",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -646,7 +817,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации или невалидный app_id\"  example({\"status\": \"error\", \"error\": \"Invalid app id\"})",
+                        "description": "Ошибка валидации или невалидный app_id",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -660,7 +831,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Неверные credentials\"  example({\"status\": \"error\", \"error\": \"Invalid credentials\"})",
+                        "description": "Неверные credentials",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -674,7 +845,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Email не подтвержден\"  example({\"status\": \"error\", \"error\": \"email is not verified\"})",
+                        "description": "Email не подтвержден",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -688,7 +859,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -736,7 +907,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Успешный выход из системы\"  example({\"status\": \"ok\"})",
+                        "description": "Успешный выход из системы",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -747,7 +918,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации: токен не передан или некорректный JSON\"  example({\"status\": \"error\", \"error\": \"refresh_token is required\"})",
+                        "description": "Ошибка валидации: токен не передан или некорректный JSON",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -761,7 +932,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Невалидный или истекший refresh токен\"  example({\"status\": \"error\", \"error\": \"Invalid credentials\"})",
+                        "description": "Невалидный или истекший refresh токен",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -775,7 +946,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -809,13 +980,13 @@ const docTemplate = `{
                 "summary": "Список привязанных OAuth-аккаунтов",
                 "responses": {
                     "200": {
-                        "description": "Список привязанных аккаунтов\"  example({\"status\": \"ok\", \"accounts\": [{\"provider\": \"google\", \"email\": \"user@example.com\", \"created_at\": \"2026-01-15T10:00:00Z\"}]})",
+                        "description": "Список привязанных аккаунтов",
                         "schema": {
                             "$ref": "#/definitions/internal_http_server_handlers_oauth_accounts.Response"
                         }
                     },
                     "401": {
-                        "description": "Access token отсутствует, невалиден или истёк\"  example({\"status\": \"error\", \"error\": \"invalid or expired access token\"})",
+                        "description": "Access token отсутствует, невалиден или истёк",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -829,7 +1000,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal server error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -970,13 +1141,13 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Успешная авторизация или привязка аккаунта\"  example({\"status\":\"ok\",\"access_token\":\"eyJ...\",\"refresh_token\":\"eyJ...\"})",
+                        "description": "Успешная авторизация или привязка аккаунта",
                         "schema": {
                             "$ref": "#/definitions/internal_http_server_handlers_oauth_callback.Response"
                         }
                     },
                     "400": {
-                        "description": "Пользователь отказал в доступе, отсутствуют параметры code/state, указан некорректный app_id либо state недействителен или истёк\"  example({\"status\":\"error\",\"error\":\"invalid or expired oauth state\"})",
+                        "description": "Пользователь отказал в доступе, отсутствуют параметры code/state, указан некорректный app_id либо state недействителен или истёк",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -990,7 +1161,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "Email, полученный от OAuth-провайдера, не подтверждён\"  example({\"status\":\"error\",\"error\":\"email not verified by provider\"})",
+                        "description": "Email, полученный от OAuth-провайдера, не подтверждён",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1004,7 +1175,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Указанный OAuth-провайдер не поддерживается\"  example({\"status\":\"error\",\"error\":\"unknown oauth provider\"})",
+                        "description": "Указанный OAuth-провайдер не поддерживается",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1018,7 +1189,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Конфликт данных: аккаунт с таким email уже существует либо OAuth-провайдер уже привязан к другому аккаунту\"  example({\"status\":\"error\",\"error\":\"account with this email already exists, log in and link instead\"})",
+                        "description": "Конфликт данных: аккаунт с таким email уже существует либо OAuth-провайдер уже привязан к другому аккаунту",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1032,7 +1203,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\":\"error\",\"error\":\"internal server error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1419,7 +1590,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Новая пара токенов\"  example({\"status\": \"ok\", \"access_token\": \"eyJhbGc...\", \"refresh_token\": \"eyJhbGc...\"})",
+                        "description": "Новая пара токенов",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1436,7 +1607,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации\"  example({\"status\": \"error\", \"error\": \"refresh_token is required\"})",
+                        "description": "Ошибка валидации",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1450,7 +1621,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Невалидный или истекший токен\"  example({\"status\": \"error\", \"error\": \"Invalid credentials\"})",
+                        "description": "Невалидный или истекший токен",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1464,7 +1635,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1518,7 +1689,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Пользователь успешно создан, письмо отправлено\"  example({\"status\": \"ok\", \"user_id\": 42})",
+                        "description": "Пользователь успешно создан, письмо отправлено",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1532,7 +1703,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации: некорректный email, слишком короткий пароль или отсутствуют обязательные поля\"  example({\"status\": \"error\", \"error\": \"Email must be a valid email address\"})",
+                        "description": "Ошибка валидации: некорректный email, слишком короткий пароль или отсутствуют обязательные поля",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1546,7 +1717,7 @@ const docTemplate = `{
                         }
                     },
                     "409": {
-                        "description": "Пользователь с таким email или username уже существует\"  example({\"status\": \"error\", \"error\": \"User with this email already exists\"})",
+                        "description": "Пользователь с таким email или username уже существует",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1560,7 +1731,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1593,7 +1764,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo0MiwiZXhwIjoxNzA2MTIzNDU2fQ.signature",
                         "description": "JWT токен верификации из email",
                         "name": "token",
                         "in": "query",
@@ -1602,7 +1772,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Email успешно подтвержден, можно входить в систему\"  example({\"status\": \"ok\"})",
+                        "description": "Email успешно подтвержден, можно входить в систему",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1613,7 +1783,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Токен отсутствует в URL\"  example({\"status\": \"error\", \"error\": \"missing token\"})",
+                        "description": "Токен отсутствует в URL",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1627,7 +1797,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Токен невалидный, истек или уже использован\"  example({\"status\": \"error\", \"error\": \"invalid or expired token\"})",
+                        "description": "Токен невалидный, истек или уже использован",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1641,7 +1811,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1689,7 +1859,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Письмо отправлено (или email уже подтвержден)\"  example({\"status\": \"ok\"})",
+                        "description": "Письмо отправлено (или email уже подтвержден)",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1700,7 +1870,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Ошибка валидации: некорректный email формат\"  example({\"status\": \"error\", \"error\": \"Email must be a valid email address\"})",
+                        "description": "Ошибка валидации: некорректный email формат",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1714,7 +1884,7 @@ const docTemplate = `{
                         }
                     },
                     "404": {
-                        "description": "Пользователь не найден\"  example({\"status\": \"error\", \"error\": \"User not found\"})",
+                        "description": "Пользователь не найден",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1728,7 +1898,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Внутренняя ошибка сервера\"  example({\"status\": \"error\", \"error\": \"Internal error\"})",
+                        "description": "Внутренняя ошибка сервера",
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -1791,13 +1961,57 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "password": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "SecurePass123!"
                 },
                 "session_id": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "abcDEF123..."
                 },
                 "token": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "fkajeDJ1p3FJ..."
+                }
+            }
+        },
+        "internal_http_server_handlers_account_request_restore_confirmation.Request": {
+            "type": "object",
+            "required": [
+                "app_id",
+                "email"
+            ],
+            "properties": {
+                "app_id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "email": {
+                    "type": "string",
+                    "example": "example@domain.com"
+                }
+            }
+        },
+        "internal_http_server_handlers_account_restore.Request": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "example@domain.com"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "SecurePass123!"
+                },
+                "session_id": {
+                    "type": "string",
+                    "example": "fkajeDJ1p3FJ..."
+                },
+                "token": {
+                    "type": "string",
+                    "example": "abcDEF123..."
                 }
             }
         },
@@ -1805,10 +2019,12 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "error": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "error"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         },
@@ -1816,13 +2032,16 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "created_at": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "2026-07-24T12:00:00Z"
                 },
                 "email": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "example@domain.com"
                 },
                 "provider": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "google"
                 }
             }
         },
@@ -1836,10 +2055,12 @@ const docTemplate = `{
                     }
                 },
                 "error": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "error"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         },
@@ -1847,16 +2068,20 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "access_token": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "fkajeDJ1p3FJ..."
                 },
                 "error": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "error"
                 },
                 "refresh_token": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "abcDEF123..."
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         },
@@ -1864,13 +2089,16 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "error": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "error"
                 },
                 "redirect_url": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "https://www.google.com/"
                 },
                 "status": {
-                    "type": "string"
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         }

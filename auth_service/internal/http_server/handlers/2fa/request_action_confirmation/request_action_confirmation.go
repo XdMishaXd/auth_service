@@ -18,7 +18,7 @@ import (
 
 type Response struct {
 	resp.Response
-	SessionID string `json:"session_id"`
+	SessionID string `json:"session_id" example:"abcDEF123..."`
 }
 
 // NewDisable2FA godoc
@@ -32,9 +32,9 @@ type Response struct {
 // @Tags         2fa
 // @Security     BearerAuth
 // @Produce      json
-// @Success      200  {object}  object{status=string,session_id=string}  "Код отправлен на email"  example({"status": "ok", "session_id": "abcDEF123..."})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Success      200  {object}  object{status=string,session_id=string}  "Код отправлен на email"
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/2fa/disable/request-confirmation [post]
 func NewDisable2FA(
 	log *slog.Logger,
@@ -56,9 +56,9 @@ func NewDisable2FA(
 // @Tags         account
 // @Security     BearerAuth
 // @Produce      json
-// @Success      200  {object}  object{status=string,session_id=string}  "Код отправлен на email"  example({"status": "ok", "session_id": "abcDEF123..."})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Success      200  {object}  object{status=string,session_id=string}  "Код отправлен на email"
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /account/delete/request-confirmation [post]
 func NewDeleteAccount(
 	log *slog.Logger,

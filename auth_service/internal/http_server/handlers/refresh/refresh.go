@@ -17,13 +17,13 @@ import (
 )
 
 type Request struct {
-	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format"`
+	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format" example:"fkajeDJ1p3FJ..."`
 }
 
 type Response struct {
 	resp.Response
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
+	AccessToken  string `json:"access_token" example:"abcDEF123..."`
+	RefreshToken string `json:"refresh_token" example:"fkajeDJ1p3FJ..."`
 }
 
 // New godoc
@@ -65,11 +65,11 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        token  body  object{refresh_token=string}  true  "Текущий refresh токен"  example({"refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."})
-// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "Новая пара токенов"  example({"status": "ok", "access_token": "eyJhbGc...", "refresh_token": "eyJhbGc..."})
-// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации"  example({"status": "error", "error": "refresh_token is required"})
-// @Failure      401  {object}  object{status=string,error=string}  "Невалидный или истекший токен"  example({"status": "error", "error": "Invalid credentials"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка"  example({"status": "error", "error": "Internal error"})
+// @Param        token  body  object{refresh_token=string}  true  "Текущий refresh токен"
+// @Success      200  {object}  object{status=string,access_token=string,refresh_token=string}  "Новая пара токенов"
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации"
+// @Failure      401  {object}  object{status=string,error=string}  "Невалидный или истекший токен"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка"
 // @Router       /auth/refresh [post]
 // @x-order      3
 func New(

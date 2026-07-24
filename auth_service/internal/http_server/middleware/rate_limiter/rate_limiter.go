@@ -116,6 +116,18 @@ func (rl *RateLimit) AccountDelete() func(http.Handler) http.Handler {
 	return rl.byUserID("account_delete", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Hour})
 }
 
+func (rl *RateLimit) AccountRestoreRequestConfirmation() func(http.Handler) http.Handler {
+	ip := rl.byIP("account_restore_request_confirmation", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
+	email := rl.byEmail("account_restore_request_confirmation", rateLimit.Policy{Burst: 2, Rate: 3, Period: time.Hour})
+	return chain(emailParser.New, ip, email)
+}
+
+func (rl *RateLimit) AccountRestore() func(http.Handler) http.Handler {
+	ip := rl.byIP("account_restore", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
+	email := rl.byEmail("account_restore", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Hour})
+	return chain(emailParser.New, ip, email)
+}
+
 func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
 		return "ip", stripPort(r.RemoteAddr) // RealIP уже подменил RemoteAddr выше по цепочке

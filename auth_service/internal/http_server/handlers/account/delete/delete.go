@@ -19,9 +19,9 @@ import (
 )
 
 type Request struct {
-	Password  string `json:"password,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Token     string `json:"token,omitempty"`
+	Password  string `json:"password,omitempty" example:"SecurePass123!"`
+	SessionID string `json:"session_id,omitempty" example:"abcDEF123..."`
+	Token     string `json:"token,omitempty" example:"fkajeDJ1p3FJ..."`
 }
 
 type Response struct {

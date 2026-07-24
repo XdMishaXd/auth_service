@@ -22,7 +22,7 @@ import (
 
 type Response struct {
 	resp.Response
-	RedirectURL string `json:"redirect_url"`
+	RedirectURL string `json:"redirect_url" example:"https://www.google.com/"`
 }
 
 // @Summary      Привязка OAuth-провайдера к существующему аккаунту

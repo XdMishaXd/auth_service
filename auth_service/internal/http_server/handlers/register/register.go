@@ -20,14 +20,14 @@ import (
 )
 
 type Request struct {
-	Email    string `json:"email" validate:"required,email"`
-	Username string `json:"username" validate:"required"`
-	Pass     string `json:"password" validate:"required,min=8"`
+	Email    string `json:"email" validate:"required,email" example:"example@domain.com"`
+	Username string `json:"username" validate:"required" example:"newUser2008"`
+	Pass     string `json:"password" validate:"required,min=8" example:"SecurePass123!"`
 }
 
 type Response struct {
 	resp.Response
-	UserID int64 `json:"user_id"`
+	UserID int64 `json:"user_id" example:"234"`
 }
 
 // New godoc
@@ -59,11 +59,11 @@ type Response struct {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        user  body  object{email=string,username=string,password=string}  true  "Данные нового пользователя"  example({"email": "newuser@example.com", "username": "john_doe", "password": "SecurePass123!"})
-// @Success      201  {object}  object{status=string,user_id=int}  "Пользователь успешно создан, письмо отправлено"  example({"status": "ok", "user_id": 42})
-// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации: некорректный email, слишком короткий пароль или отсутствуют обязательные поля"  example({"status": "error", "error": "Email must be a valid email address"})
-// @Failure      409  {object}  object{status=string,error=string}  "Пользователь с таким email или username уже существует"  example({"status": "error", "error": "User with this email already exists"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом"  example({"status": "error", "error": "Internal error"})
+// @Param        user  body  object{email=string,username=string,password=string}  true  "Данные нового пользователя"
+// @Success      201  {object}  object{status=string,user_id=int}  "Пользователь успешно создан, письмо отправлено"
+// @Failure      400  {object}  object{status=string,error=string}  "Ошибка валидации: некорректный email, слишком короткий пароль или отсутствуют обязательные поля"
+// @Failure      409  {object}  object{status=string,error=string}  "Пользователь с таким email или username уже существует"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка: проблемы с БД, RabbitMQ или email сервисом"
 // @Router       /auth/register [post]
 // @x-order      2
 func New(

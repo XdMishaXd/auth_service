@@ -16,9 +16,9 @@ import (
 )
 
 type Account struct {
-	Provider  string    `json:"provider"`
-	Email     string    `json:"email"`
-	CreatedAt time.Time `json:"created_at"`
+	Provider  string    `json:"provider" example:"google"`
+	Email     string    `json:"email" example:"example@domain.com"`
+	CreatedAt time.Time `json:"created_at" example:"2026-07-24T12:00:00Z"`
 }
 
 type Response struct {
@@ -33,9 +33,9 @@ type Response struct {
 // @Tags         oauth
 // @Security     BearerAuth
 // @Produce      json
-// @Success      200  {object}  Response  "Список привязанных аккаунтов"  example({"status": "ok", "accounts": [{"provider": "google", "email": "user@example.com", "created_at": "2026-01-15T10:00:00Z"}]})
-// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"  example({"status": "error", "error": "invalid or expired access token"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "internal server error"})
+// @Success      200  {object}  Response  "Список привязанных аккаунтов"
+// @Failure      401  {object}  object{status=string,error=string}  "Access token отсутствует, невалиден или истёк"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/oauth/accounts [get]
 func New(
 	log *slog.Logger,

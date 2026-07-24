@@ -21,6 +21,8 @@ import (
 	resendMagicLink "auth_service/internal/http_server/handlers/2fa/resend_magic_link"
 	verifyMagicLink "auth_service/internal/http_server/handlers/2fa/verify_magic_link"
 	deleteAccount "auth_service/internal/http_server/handlers/account/delete"
+	requestRestoreConfirmation "auth_service/internal/http_server/handlers/account/request_restore_confirmation"
+	"auth_service/internal/http_server/handlers/account/restore"
 	docsHandler "auth_service/internal/http_server/handlers/infrastructure/docs"
 	"auth_service/internal/http_server/handlers/infrastructure/health"
 	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics"
@@ -436,6 +438,21 @@ func setupRouter(
 		})
 
 		r.Route("/account", func(r chi.Router) {
+			// Публичные эндпоинты — юзер soft-deleted, не может пройти
+			// RequireAuth (Login блокирует его до восстановления).
+			r.With(rateLimiter.AccountRestoreRequestConfirmation()).Post("/restore/request-confirmation",
+				requestRestoreConfirmation.New(
+					log,
+					validate,
+					authService,
+					cfg.HTTPServer.HandlersTimeout,
+					cfg.TwoFactorAuth.PendingSessionTTL,
+				),
+			)
+			r.With(rateLimiter.AccountRestore()).Post("/restore",
+				restore.New(log, validate, authService, cfg.HTTPServer.HandlersTimeout),
+			)
+
 			// Authenticated — требуют access-токен.
 			r.Group(func(r chi.Router) {
 				r.Use(claimsParser.RequireAuth(appProvider))

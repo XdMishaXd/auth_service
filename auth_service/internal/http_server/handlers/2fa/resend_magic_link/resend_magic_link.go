@@ -18,7 +18,7 @@ import (
 )
 
 type Request struct {
-	SessionID string `json:"session_id" validate:"required"`
+	SessionID string `json:"session_id" validate:"required" example:"abcDEF123..."`
 }
 
 type Response struct {
@@ -34,12 +34,12 @@ type Response struct {
 // @Tags         2fa
 // @Accept       json
 // @Produce      json
-// @Param        request  body  object{session_id=string}  true  "Идентификатор pending-сессии"  example({"session_id": "abcDEF123..."})
-// @Success      200  {object}  object{status=string}  "Новая ссылка отправлена (либо попытка предпринята)"  example({"status": "ok"})
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса"  example({"status": "error", "error": "field SessionID is required"})
-// @Failure      401  {object}  object{status=string,error=string}  "Pending-сессия не найдена или истекла — нужно начать логин заново"  example({"status": "error", "error": "session expired, please log in again"})
-// @Failure      429  {object}  object{status=string,error=string}  "Слишком частые запросы на повторную отправку"  example({"status": "error", "error": "rate limit exceeded"})
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"  example({"status": "error", "error": "Internal error"})
+// @Param        request  body  object{session_id=string}  true  "Идентификатор pending-сессии"
+// @Success      200  {object}  object{status=string}  "Новая ссылка отправлена (либо попытка предпринята)"
+// @Failure      400  {object}  object{status=string,error=string}  "Невалидное тело запроса"
+// @Failure      401  {object}  object{status=string,error=string}  "Pending-сессия не найдена или истекла — нужно начать логин заново"
+// @Failure      429  {object}  object{status=string,error=string}  "Слишком частые запросы на повторную отправку"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /auth/2fa/magic-link/resend [post]
 func New(
 	log *slog.Logger,
