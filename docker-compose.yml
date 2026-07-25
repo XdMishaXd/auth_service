@@ -219,6 +219,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -235,6 +236,29 @@ services:
         limits:
           memory: 256m
     networks: [backend]
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    restart: unless-stopped
+    env_file: ./monitoring/.env
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml.template:/etc/alertmanager/alertmanager.yml.template:ro
+      - alertmanager_data:/alertmanager
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        sed -e "s|__TG_BOT_TOKEN__|$$TG_BOT_TOKEN|g" -e "s|__TG_CHAT_ID__|$$TG_CHAT_ID|g"
+        /etc/alertmanager/alertmanager.yml.template > /tmp/alertmanager.yml &&
+        /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
+    expose:
+      - "9093"
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    networks: [backend]
 
 networks:
   backend:
@@ -247,3 +271,4 @@ volumes:
   loki_data:
   grafana_data:
   rabbitmq_data:
+  alertmanager_data:

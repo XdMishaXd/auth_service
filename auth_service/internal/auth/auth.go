@@ -671,7 +671,8 @@ func (a *Auth) RestoreAccount(
 	ctx context.Context,
 	email, password string,
 	sessionID, rawToken string,
-) error {
+	appID int32,
+) (accessToken, refreshToken string, err error) {
 	const op = "Auth.RestoreAccount"
 
 	log := a.Log.With(slog.String("op", op))
@@ -679,47 +680,52 @@ func (a *Auth) RestoreAccount(
 	user, err := a.UsrProvider.UserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
-			return storage.ErrUserNotFound
+			return "", "", storage.ErrUserNotFound
 		}
 		log.Error("failed to get user", sl.Err(err))
-		return fmt.Errorf("%s: %w", op, err)
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	if user.DeletedAt == nil {
-		return storage.ErrNothingToRestore
+		return "", "", storage.ErrNothingToRestore
 	}
 
 	switch {
 	case user.PassHash != nil:
 		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
 			log.Warn("restore account: invalid password", slog.Int64("user_id", user.ID))
-			return ErrRestoreConfirmation
+			return "", "", ErrRestoreConfirmation
 		}
 	default:
 		if sessionID == "" || rawToken == "" {
-			return ErrRestoreConfirmation
+			return "", "", ErrRestoreConfirmation
 		}
 		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, user.ID, models.ActionRestoreAccount); err != nil {
 			log.Warn("restore account: invalid magic link confirmation", sl.Err(err))
-			return ErrRestoreConfirmation
+			return "", "", ErrRestoreConfirmation
 		}
 	}
 
 	if err := a.UsrSaver.RestoreAccount(ctx, user.ID); err != nil {
 		switch {
 		case errors.Is(err, storage.ErrNothingToRestore):
-			return storage.ErrNothingToRestore
+			return "", "", storage.ErrNothingToRestore
 		case errors.Is(err, storage.ErrUserNotFound):
-			return err
+			return "", "", err
 		default:
 			log.Error("failed to restore account", sl.Err(err), slog.Int64("user_id", user.ID))
-			return fmt.Errorf("%s: %w", op, err)
+			return "", "", fmt.Errorf("%s: %w", op, err)
 		}
+	}
+
+	app, err := a.AppProvider.App(ctx, appID)
+	if err != nil {
+		return "", "", ErrInvalidAppID
 	}
 
 	log.Info("account restored", slog.Int64("user_id", user.ID))
 
-	return nil
+	return a.IssueTokens(ctx, user, app)
 }
 
 // RequestRestoreConfirmation — то же, что RequestActionConfirmation, но

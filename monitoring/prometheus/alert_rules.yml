@@ -1,0 +1,29 @@
+groups:
+  - name: critical
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} недоступен"
+          description: "Таргет {{ $labels.instance }} (job={{ $labels.job }}) не отвечает на scrape уже 30 секунд."
+
+      - alert: DLQMessagesPresent
+        expr: rabbitmq_queue_messages_ready{queue=~".*dlq.*"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "В DLQ {{ $labels.queue }} есть сообщения"
+          description: "{{ $value }} сообщений скопилось в {{ $labels.queue }} — email_sender не смог их обработать, письма не доставлены."
+
+      - alert: EmailProcessingFailures
+        expr: rate(messages_failed_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "email_sender не может обработать сообщения"
+          description: "Rate failed messages: {{ $value }}/сек за последние 5 минут, reason={{ $labels.reason }}."

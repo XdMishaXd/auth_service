@@ -25,24 +25,32 @@ type Request struct {
 	Password  string `json:"password,omitempty" example:"SecurePass123!"`
 	SessionID string `json:"session_id,omitempty" example:"fkajeDJ1p3FJ..."`
 	Token     string `json:"token,omitempty" example:"abcDEF123..."`
+	AppID     int32  `json:"app_id" validate:"required,gt=0" example:"1"`
+}
+
+type Response struct {
+	resp.Response
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // New godoc
 // @Summary      Восстановить удалённый аккаунт
 // @Description  Отменяет soft-delete, если grace period (7 дней) ещё не
-// @Description  истёк. Требует подтверждения: паролем (если он установлен)
-// @Description  либо magic-link кодом, полученным через
+// @Description  истёк, и сразу выдаёт access/refresh токены. Требует
+// @Description  подтверждения: паролем (если он установлен) либо
+// @Description  magic-link токеном, полученным через
 // @Description  /account/restore/request-confirmation (для oauth-only
 // @Description  пользователей без пароля). Неаутентифицированный эндпоинт.
 // @Tags         account
 // @Accept       json
 // @Produce      json
-// @Param        request  body  Request  true  "Email + (пароль ИЛИ session_id+code)"
-// @Success      204  "Аккаунт восстановлен"
-// @Failure      400  {object}  object{status=string,error=string}  "Невалидный запрос"
-// @Failure      401  {object}  object{status=string,error=string}  "Неверный пароль или код подтверждения, аккаунт не найден, не был удалён или grace period истёк"
-// @Failure      429  {object}  object{status=string,error=string}  "Превышен лимит запросов"
-// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
+// @Param        request  body      Request  true  "Email + (пароль ИЛИ session_id+token) + app_id"
+// @Success      200  {object}  Response       "Аккаунт восстановлен, выданы токены"
+// @Failure      400  {object}  ErrorResponse  "Невалидный запрос"
+// @Failure      401  {object}  ErrorResponse  "Неверный пароль или код подтверждения, аккаунт не найден, не был удалён или grace period истёк"
+// @Failure      429  {object}  ErrorResponse  "Превышен лимит запросов"
+// @Failure      500  {object}  ErrorResponse  "Внутренняя ошибка сервера"
 // @Router       /account/restore [post]
 func New(
 	log *slog.Logger,
@@ -81,7 +89,14 @@ func New(
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
-		err := authService.RestoreAccount(ctx, req.Email, req.Password, req.SessionID, req.Token)
+		accessToken, refreshToken, err := authService.RestoreAccount(
+			ctx,
+			req.Email,
+			req.Password,
+			req.SessionID,
+			req.Token,
+			req.AppID,
+		)
 		if err != nil {
 			switch {
 			case errors.Is(err, auth.ErrRestoreConfirmation),
@@ -101,6 +116,14 @@ func New(
 
 		log.Info("account restored", slog.String("email", req.Email))
 
-		w.WriteHeader(http.StatusNoContent)
+		ResponseOK(w, r, accessToken, refreshToken)
 	}
+}
+
+func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, Response{
+		Response:     resp.OK(),
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 }
