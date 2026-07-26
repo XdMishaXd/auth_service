@@ -298,7 +298,7 @@ func setupRouter(
 					msgBroker,
 					cfg.Tokens.VerificationTokenTTL,
 					cfg.Tokens.VerificationTokenSecret,
-					cfg.HTTPServer.Address,
+					"",
 					cfg.HTTPServer.HandlersTimeout,
 				),
 			)

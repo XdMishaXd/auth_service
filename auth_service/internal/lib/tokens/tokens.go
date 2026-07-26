@@ -14,7 +14,12 @@ import (
 // Не экспортируется — используется только внутри конструкторов конкретных токенов.
 func generateOpaque(id string) (string, string, []byte, error) {
 	if id == "" {
-		id = uuid.NewString()
+		newID, err := uuid.NewV7()
+		if err != nil {
+			return "", "", nil, err
+		}
+
+		id = newID.String()
 	}
 
 	b := make([]byte, 32)

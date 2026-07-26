@@ -11,7 +11,7 @@ tokens:
 
 two_factor_auth:
   token_ttl: 10m
-  redirect_url: "http://localhost:8082"
+  redirect_url: "https://localhost/"
   pending_session_ttl: 10m
 
 oauth:

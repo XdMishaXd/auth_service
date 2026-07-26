@@ -164,7 +164,7 @@ func handleMessage(log *slog.Logger, mailSender *mailer.Mailer, cfg *config.Conf
 	if err := mailSender.Send(
 		emailMsg.Email,
 		cfg.Email.Username,
-		"http://localhost"+emailMsg.MessageText,
+		"https://localhost"+emailMsg.MessageText,
 		emailMsg.Purpose,
 	); err != nil {
 		log.Error("failed to send message", sl.Err(err))

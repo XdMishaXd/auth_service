@@ -1,5 +1,5 @@
 # * Build Stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25.7-alpine AS builder
 
 LABEL image_author="Michael Prunchak"
 
@@ -24,8 +24,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 	-o auth_service \
 	./cmd
 
+RUN git clone --depth 1 --branch v3.27.3 https://github.com/pressly/goose /tmp/goose && \
+	cd /tmp/goose && \
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	-tags='no_clickhouse no_libsql no_mssql no_mysql no_sqlite3 no_vertica no_ydb' \
+	-o /go/bin/goose ./cmd/goose
+
 # * Runtime Stage
-FROM alpine:3.19
+FROM alpine:3.20
 
 LABEL maintainer="Michael Prunchak"
 
@@ -39,6 +45,8 @@ RUN apk --no-cache add \
 
 COPY --from=builder /build/auth_service .
 COPY --from=builder /build/config ./config
+COPY --from=builder /build/migrations ./migrations
+COPY --from=builder /go/bin/goose /usr/local/bin/goose
 
 USER appuser
 
