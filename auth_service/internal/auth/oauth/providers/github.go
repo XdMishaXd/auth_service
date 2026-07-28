@@ -73,7 +73,15 @@ func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUser
 	if err != nil {
 		return "", "", fmt.Errorf("github fetch user: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("github fetch user: %w", cerr)
+			} else {
+				err = fmt.Errorf("%v; github fetch user close: %v", err, cerr)
+			}
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", fmt.Errorf("github user: unexpected status %d", resp.StatusCode)
@@ -114,7 +122,15 @@ func fetchGitHubPrimaryVerifiedEmail(ctx context.Context, client *http.Client) (
 	if err != nil {
 		return "", fmt.Errorf("github fetch emails: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("github fetch user: %w", cerr)
+			} else {
+				err = fmt.Errorf("%v; github fetch user close: %v", err, cerr)
+			}
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("github emails: unexpected status %d", resp.StatusCode)

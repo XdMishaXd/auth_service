@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+
+	sl "auth_service/internal/lib/logger"
 )
 
 // ctxKey — непубличный типизированный тип ключа контекста, чтобы исключить
@@ -31,7 +34,7 @@ type emailPayload struct {
 // хендлера/rate-limit-конфига (пустой email при этом лимитируется как
 // отдельный "аноним" ключ — сознательное решение, чтобы не плодить точки
 // принятия решений об ошибках в двух местах).
-func New(next http.Handler) http.Handler {
+func New(next http.Handler, log *slog.Logger) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -40,7 +43,11 @@ func New(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		r.Body.Close()
+		defer func() {
+			if cerr := r.Body.Close(); cerr != nil {
+				log.Warn("failed to close request body", sl.Err(cerr))
+			}
+		}()
 
 		// Восстанавливаем body для хендлера НЕЗАВИСИМО от того,
 		// распарсился JSON или нет — иначе хендлер получит пустое тело

@@ -22,7 +22,10 @@ func ValidateRedirectURI(raw string, allowedHosts map[string]bool) (string, erro
 		return "", ErrRedirectURIInvalid
 	}
 
-	if u.Scheme != "https" && !(u.Scheme == "http" && u.Hostname() == "localhost") {
+	isHTTPS := u.Scheme == "https"
+	isLocalHTTP := u.Scheme == "http" && u.Hostname() == "localhost"
+
+	if !isHTTPS && !isLocalHTTP {
 		return "", ErrRedirectURIScheme
 	}
 

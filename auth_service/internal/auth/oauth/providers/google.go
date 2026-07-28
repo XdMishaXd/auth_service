@@ -53,7 +53,15 @@ func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken)
 	if err != nil {
 		return nil, fmt.Errorf("google fetch userinfo: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			if err == nil {
+				err = fmt.Errorf("google fetch user: %w", cerr)
+			} else {
+				err = fmt.Errorf("%v; google fetch user close: %v", err, cerr)
+			}
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("google userinfo: unexpected status %d", resp.StatusCode)

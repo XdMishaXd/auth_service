@@ -1,0 +1,106 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # Обязательные базовые
+    - errcheck # ловит проигнорированные ошибки — запрет на silent fail
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+
+    # Error wrapping / обработка ошибок
+    - errorlint # требует errors.Is/As вместо == и type assertion на ошибки
+    - wrapcheck # требует оборачивать ошибки из внешних пакетов через %w
+
+    # Context
+    - contextcheck # ловит не проброшенный context.Context между вызовами
+    - noctx # требует context в HTTP-запросах вместо context.Background()
+    - containedctx # запрещает хранить context в структурах (антипаттерн)
+
+    # Concurrency / goroutines
+    # - govet уже включает загрузку/анализ на некоторые гонки через -race не входит сюда,
+    #   но staticcheck ловит часть паттернов утечки горутин статически
+
+    # Style / idiomatic Go
+    - revive # заменяет golint, настраиваемый под Effective Go
+    - gocritic
+    - gofmt
+    - goimports
+
+    # Безопасность
+    - gosec
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - .Wrap(
+      - .Wrapf(
+
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+      - name: error-return
+        severity: error
+      - name: error-naming
+        severity: error
+      - name: context-as-argument
+        severity: error
+      - name: context-keys-type
+        severity: error
+      - name: unused-parameter
+        severity: warning
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      - style
+    disabled-checks:
+      - hugeParam # часто ложные срабатывания на структурах с context
+
+  gosec:
+    excludes:
+      - G104 # дублирует errcheck, не нужно два раза
+
+issues:
+  exclude-rules:
+    # Тестовые файлы — не требуем wrapcheck/gosec там, где это избыточно
+    - path: _test\.go
+      linters:
+        - wrapcheck
+        - gosec
+
+    # Моки в тестах намеренно возвращают функции-поля без доп. проверок
+    - path: _test\.go
+      linters:
+        - unused-parameter
+
+    - path: internal/storage/postgres/
+      linters:
+        - staticcheck
+      text: "QF1008"
+
+    - path: cmd/main.go
+      linters:
+        - staticcheck
+      text: "QF1008"
+
+    - path: internal/auth/2fa/
+      linters:
+        - staticcheck
+      text: "QF1008"
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
