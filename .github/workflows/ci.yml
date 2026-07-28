@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25.12"
+          go-version: "1.25"
           cache: true
           cache-dependency-path: auth_service/go.sum
 
@@ -28,34 +28,34 @@ jobs:
         with:
           working-directory: ./auth_service
 
-      - name: Test (unit + integration, testcontainers requires docker)
+      - name: Test
         working-directory: ./auth_service
         run: go test -race -cover ./...
 
-compose-validate:
-  runs-on: ubuntu-latest
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+  compose-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Create dummy env files for config validation
-      run: |
-        echo "POSTGRES_USER=ci
-        POSTGRES_PASSWORD=ci
-        POSTGRES_DB=ci" > .env
-        echo "PLACEHOLDER=ci" > ./auth_service/.env
-        echo "PLACEHOLDER=ci" > ./email_sender/.env
-        echo "PLACEHOLDER=ci" > ./monitoring/.env
+      - name: Create dummy env files for config validation
+        run: |
+          echo "POSTGRES_USER=ci" >> .env
+          echo "POSTGRES_PASSWORD=ci" >> .env
+          echo "POSTGRES_DB=ci" >> .env
+          echo "PLACEHOLDER=ci" > ./auth_service/.env
+          echo "PLACEHOLDER=ci" > ./email_sender/.env
+          echo "PLACEHOLDER=ci" > ./monitoring/.env
 
-    - name: Validate docker compose config
-      run: docker compose config --quiet
+      - name: Validate docker compose config
+        run: docker compose config --quiet
 
-build:
-  runs-on: ubuntu-latest
-  needs: [test]
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Build auth_service image
-      run: docker build -t auth_service:ci ./auth_service
+      - name: Build auth_service image
+        run: docker build -t auth_service:ci ./auth_service
