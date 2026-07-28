@@ -37,7 +37,7 @@ import (
 	"auth_service/internal/http_server/handlers/password/forgot"
 	"auth_service/internal/http_server/handlers/password/reset"
 	"auth_service/internal/http_server/handlers/refresh"
-	register "auth_service/internal/http_server/handlers/register"
+	"auth_service/internal/http_server/handlers/register"
 	resendVerification "auth_service/internal/http_server/handlers/resend_verification_email"
 	"auth_service/internal/http_server/handlers/verify"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
@@ -51,6 +51,7 @@ import (
 	rateLimit "auth_service/internal/ratelimit"
 	"auth_service/internal/storage/postgres"
 	redisClient "auth_service/internal/storage/redis"
+	"auth_service/logger"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -63,12 +64,6 @@ import (
 // @description     Сервис авторизации
 // @host            localhost:8082
 // @BasePath        /
-
-const (
-	envLocal = "local"
-	envDev   = "dev"
-	envProd  = "prod"
-)
 
 func main() {
 	cfg := config.MustLoad("./config/config.yaml")
@@ -90,7 +85,7 @@ func main() {
 		"github": githubProvider,
 	}
 
-	log := setupLogger(cfg.Env)
+	log := logger.MustSetup(cfg.Env)
 
 	log.Info("starting auth service", slog.String("env", cfg.Env))
 
@@ -473,31 +468,6 @@ func setupRouter(
 	})
 
 	return r
-}
-
-func setupLogger(env string) *slog.Logger {
-	var log *slog.Logger
-
-	switch env {
-	case envLocal:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
-	case envDev:
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
-	case envProd:
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
-		)
-	default:
-		log = slog.New(
-			slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
-	}
-
-	return log
 }
 
 func allowedRedirectHostSet(allowedHosts []string) map[string]bool {

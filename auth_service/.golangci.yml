@@ -4,6 +4,9 @@ run:
   timeout: 5m
   tests: true
 
+  exclude-dirs:
+    - docs
+
 linters:
   default: none
 
@@ -57,7 +60,7 @@ linters:
           disabled: true
         - name: import-alias-naming
           disabled: true
-        - name: comments-density
+        - name: exported
           disabled: true
         - name: exported
           severity: warning
@@ -73,6 +76,8 @@ linters:
           severity: warning
         - name: cyclomatic
           arguments: [15]
+        - name: max-public-structs
+          arguments: [10]
 
     gocritic:
       enabled-tags:
