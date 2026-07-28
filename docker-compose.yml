@@ -28,6 +28,27 @@ services:
         max-size: "10m"
         max-file: "3"
     networks: [backend]
+  postgres_backup:
+    image: prodrigestivill/postgres-backup-local:18-alpine
+    container_name: postgres_backup
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 128m
+    networks: [backend]
   redis:
     image: redis:8
     container_name: auth_service_cache

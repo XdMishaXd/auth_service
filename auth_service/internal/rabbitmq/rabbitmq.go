@@ -33,14 +33,15 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 
 	ch, err := conn.Channel()
 	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("%s: %w", op, err)
+		closeErr := conn.Close()
+		return nil, fmt.Errorf("%s: %w", op, errors.Join(err, closeErr))
 	}
 
 	if err := declareDeadLetterInfra(ch, queueName, dlxExchangeName, dlqName); err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("%s: %w", op, err)
+		closeErr := ch.Close()
+		closeErr2 := conn.Close()
+
+		return nil, fmt.Errorf("%s: %w; ch.Close: %v; conn.Close: %v", op, err, closeErr, closeErr2)
 	}
 
 	q, err := ch.QueueDeclare(
@@ -54,9 +55,10 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 		},
 	)
 	if err != nil {
-		ch.Close()
-		conn.Close()
-		return nil, fmt.Errorf("%s: %w", op, err)
+		closeErr := ch.Close()
+		closeErr2 := conn.Close()
+
+		return nil, fmt.Errorf("%s: %w; ch.Close: %v; conn.Close: %v", op, err, closeErr, closeErr2)
 	}
 
 	return &RabbitMQClient{conn: conn, channel: ch, queue: q}, nil

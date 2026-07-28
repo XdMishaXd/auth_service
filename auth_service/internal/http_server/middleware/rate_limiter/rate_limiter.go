@@ -37,7 +37,7 @@ func (rl *RateLimit) Register() func(http.Handler) http.Handler {
 func (rl *RateLimit) Login() func(http.Handler) http.Handler {
 	ip := rl.byIP("login", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Minute})
 	email := rl.byEmail("login", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Minute})
-	return chain(emailParser.New, ip, email)
+	return chain(func(next http.Handler) http.Handler { return emailParser.New(next, rl.log) }, ip, email)
 }
 
 func (rl *RateLimit) Refresh() func(http.Handler) http.Handler {
@@ -55,13 +55,13 @@ func (rl *RateLimit) Verify() func(http.Handler) http.Handler {
 func (rl *RateLimit) ResendVerificationEmail() func(http.Handler) http.Handler {
 	ip := rl.byIP("verify_resend", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("verify_resend", rateLimit.Policy{Burst: 1, Rate: 3, Period: time.Hour})
-	return chain(emailParser.New, ip, email)
+	return chain(func(next http.Handler) http.Handler { return emailParser.New(next, rl.log) }, ip, email)
 }
 
 func (rl *RateLimit) ForgotPassword() func(http.Handler) http.Handler {
 	ip := rl.byIP("forgot_password", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("forgot_password", rateLimit.Policy{Burst: 2, Rate: 3, Period: time.Hour})
-	return chain(emailParser.New, ip, email)
+	return chain(func(next http.Handler) http.Handler { return emailParser.New(next, rl.log) }, ip, email)
 }
 
 func (rl *RateLimit) ResetPassword() func(http.Handler) http.Handler {
@@ -119,13 +119,13 @@ func (rl *RateLimit) AccountDelete() func(http.Handler) http.Handler {
 func (rl *RateLimit) AccountRestoreRequestConfirmation() func(http.Handler) http.Handler {
 	ip := rl.byIP("account_restore_request_confirmation", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("account_restore_request_confirmation", rateLimit.Policy{Burst: 2, Rate: 3, Period: time.Hour})
-	return chain(emailParser.New, ip, email)
+	return chain(func(next http.Handler) http.Handler { return emailParser.New(next, rl.log) }, ip, email)
 }
 
 func (rl *RateLimit) AccountRestore() func(http.Handler) http.Handler {
 	ip := rl.byIP("account_restore", rateLimit.Policy{Burst: 5, Rate: 20, Period: time.Hour})
 	email := rl.byEmail("account_restore", rateLimit.Policy{Burst: 3, Rate: 5, Period: time.Hour})
-	return chain(emailParser.New, ip, email)
+	return chain(func(next http.Handler) http.Handler { return emailParser.New(next, rl.log) }, ip, email)
 }
 
 func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
