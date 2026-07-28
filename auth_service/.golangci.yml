@@ -48,7 +48,7 @@ linters:
       enable-all-rules: true
       rules:
         - name: line-length-limit
-          disable: true
+          disabled: true
         - name: exported
           severity: warning
         - name: error-return
@@ -62,9 +62,9 @@ linters:
         - name: unused-parameter
           severity: warning
         - name: add-constant
-          disable: true
+          disabled: true
         - name: cognitive-complexity
-          disable: true
+          disabled: true
         - name: cyclomatic
           arguments: [15]
 
