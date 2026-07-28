@@ -48,7 +48,7 @@ linters:
       enable-all-rules: true
       rules:
         - name: line-length-limit
-          disable: true
+          disabled: true
         - name: exported
           severity: warning
         - name: error-return
