@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
-	twoFactorAuth "auth_service/internal/auth/2fa"
+	"auth_service/internal/auth/twoFactorAuth"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/storage"

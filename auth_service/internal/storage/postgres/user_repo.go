@@ -123,7 +123,7 @@ func (r *PostgresRepo) UserIDByEmail(ctx context.Context, email string) (int64, 
 }
 
 // * CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
-func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (int64, bool, error) {
+func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (userID int64, isVerified bool, err error) {
 	const op = "storage.postgres.CheckIfUserVerified"
 
 	query := `	
@@ -133,11 +133,8 @@ func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (i
 	`
 	row := r.pool.QueryRow(ctx, query, email)
 
-	var isVerified bool
-	var id int64
-
-	err := row.Scan(
-		&id,
+	err = row.Scan(
+		&userID,
 		&isVerified,
 	)
 	if err != nil {
@@ -148,7 +145,7 @@ func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (i
 		return 0, false, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return id, isVerified, nil
+	return userID, isVerified, nil
 }
 
 func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error {
@@ -270,7 +267,7 @@ func (r *PostgresRepo) RestoreAccount(ctx context.Context, userID int64) error {
 	if deletedAt == nil {
 		return storage.ErrNothingToRestore
 	}
-	if deletedAt.Before(time.Now().Add(-7 * 24 * time.Hour)) {
+	if deletedAt.Before(time.Now().Add(storage.AccountRestoreWindow)) {
 		return storage.ErrRestoreWindowExpired
 	}
 

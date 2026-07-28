@@ -24,24 +24,24 @@ var (
 	ErrAccountPendingDeletion = errors.New("account with this email is pending deletion")
 )
 
-// OAuthProvider — внешний клиент конкретного провайдера (Google/GitHub).
-type OAuthProvider interface {
+// Provider — внешний клиент конкретного провайдера (Google/GitHub).
+type Provider interface {
 	AuthURL(state string) string
-	Exchange(ctx context.Context, code string) (*OAuthToken, error)
-	FetchUser(ctx context.Context, token *OAuthToken) (*OAuthUser, error)
+	Exchange(ctx context.Context, code string) (*Token, error)
+	FetchUser(ctx context.Context, token *Token) (*User, error)
 }
 
-type OAuthToken struct {
+type Token struct {
 	AccessToken string
 }
 
-type OAuthUser struct {
+type User struct {
 	ProviderUserID string
 	Email          string
 	EmailVerified  bool
 }
 
-type OAuthAccountRepo interface {
+type AccountRepo interface {
 	SaveOAuthAccount(ctx context.Context, userID int64, provider, providerUserID, email string) error
 	OAuthAccountByProviderUserID(ctx context.Context, provider, providerUserID string) (*models.OAuthAccount, error)
 	OAuthAccountsByUserID(ctx context.Context, userID int64) ([]*models.OAuthAccount, error)
@@ -49,13 +49,13 @@ type OAuthAccountRepo interface {
 	SaveOAuthUser(ctx context.Context, email, username, provider, providerUserID string) (int64, error)
 }
 
-// OAuthStateStore — доступ к state-токенам в Redis.
-type OAuthStateStore interface {
-	SaveOAuthState(ctx context.Context, state string, payload OAuthStatePayload, ttl time.Duration) error
-	GetAndDeleteOAuthState(ctx context.Context, state string) (*OAuthStatePayload, error)
+// StateStore — доступ к state-токенам в Redis.
+type StateStore interface {
+	SaveOAuthState(ctx context.Context, state string, payload StatePayload, ttl time.Duration) error
+	GetAndDeleteOAuthState(ctx context.Context, state string) (*StatePayload, error)
 }
 
-type OAuthStatePayload struct {
+type StatePayload struct {
 	RedirectURI string `json:"redirect_uri"`
 	UserID      int64  `json:"user_id,omitempty"`
 	AppID       int32  `json:"app_id"`
@@ -66,9 +66,9 @@ type OAuthService struct {
 
 	log *slog.Logger
 
-	accountRepo OAuthAccountRepo
-	stateStore  OAuthStateStore
-	providers   map[string]OAuthProvider
+	accountRepo AccountRepo
+	stateStore  StateStore
+	providers   map[string]Provider
 
 	stateTTL time.Duration
 }
@@ -76,9 +76,9 @@ type OAuthService struct {
 func New(
 	base *auth.Auth,
 	log *slog.Logger,
-	accountRepo OAuthAccountRepo,
-	stateStore OAuthStateStore,
-	providers map[string]OAuthProvider,
+	accountRepo AccountRepo,
+	stateStore StateStore,
+	providers map[string]Provider,
 	stateTTL time.Duration,
 ) *OAuthService {
 	return &OAuthService{
@@ -112,7 +112,7 @@ func (s *OAuthService) StartLogin(
 		return "", fmt.Errorf("%s: generate state: %w", op, err)
 	}
 
-	payload := OAuthStatePayload{
+	payload := StatePayload{
 		RedirectURI: redirectURI,
 		UserID:      userID,
 		AppID:       appID,
@@ -268,7 +268,7 @@ func generateState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func (s *OAuthService) provider(name string) (OAuthProvider, error) {
+func (s *OAuthService) provider(name string) (Provider, error) {
 	p, ok := s.providers[name]
 	if !ok {
 		return nil, ErrOAuthProviderNotFound

@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	ErrMagicLinkVerificationFailed = errors.New("lagic link verification failed")
+	ErrMagicLinkVerificationFailed = errors.New("magic link verification failed")
 	ErrActionMismatch              = errors.New("action mismatch")
 )
 

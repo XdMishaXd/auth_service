@@ -102,7 +102,7 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 		if isNoScript(err) {
 			opID, regErr := l.redis.RegisterAtomicOp(ctx)
 			if regErr != nil {
-				return Decision{}, fmt.Errorf("%w: script re-registration failed: %v", ErrRedisUnavailable, regErr)
+				return Decision{}, fmt.Errorf("%w: script re-registration failed: %w", ErrRedisUnavailable, regErr)
 			}
 			l.opID = opID
 
@@ -116,7 +116,7 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 
 		if err != nil {
 			if isConnIssue(ctx, err) {
-				return Decision{}, fmt.Errorf("%w: %v", ErrRedisUnavailable, err)
+				return Decision{}, fmt.Errorf("%w: %w", ErrRedisUnavailable, err)
 			}
 			return Decision{}, fmt.Errorf("ratelimiter: execute failed: %w", err)
 		}

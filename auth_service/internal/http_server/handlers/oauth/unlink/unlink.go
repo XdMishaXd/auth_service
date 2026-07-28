@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"auth_service/internal/auth/oauth"
-	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
+	claimsparser "auth_service/internal/http_server/middleware/claims_parser"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/storage"
@@ -22,6 +22,7 @@ type Response struct {
 	resp.Response
 }
 
+// New godoc
 // @Summary      Отвязка OAuth-провайдера от аккаунта
 // @Description  Удаляет связь между указанным OAuth-провайдером и аккаунтом
 // @Description  текущего аутентифицированного пользователя.
@@ -50,7 +51,7 @@ func New(
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		claims, ok := claimsParser.ClaimsFromContext(r.Context())
+		claims, ok := claimsparser.ClaimsFromContext(r.Context())
 		if !ok {
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
@@ -78,7 +79,7 @@ func New(
 	}
 }
 
-func mapUnlinkError(err error) (int, string) {
+func mapUnlinkError(err error) (statusCode int, errForReturn string) {
 	switch {
 	case errors.Is(err, oauth.ErrOAuthLastAuthMethod):
 		return http.StatusForbidden, "cannot unlink last authentication method"

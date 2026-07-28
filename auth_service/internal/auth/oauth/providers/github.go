@@ -32,16 +32,16 @@ func (p *GitHubProvider) AuthURL(state string) string {
 	return p.config.AuthCodeURL(state)
 }
 
-func (p *GitHubProvider) Exchange(ctx context.Context, code string) (*oauth.OAuthToken, error) {
+func (p *GitHubProvider) Exchange(ctx context.Context, code string) (*oauth.Token, error) {
 	token, err := p.config.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("github exchange: %w", err)
 	}
 
-	return &oauth.OAuthToken{AccessToken: token.AccessToken}, nil
+	return &oauth.Token{AccessToken: token.AccessToken}, nil
 }
 
-func (p *GitHubProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken) (*oauth.OAuthUser, error) {
+func (p *GitHubProvider) FetchUser(ctx context.Context, token *oauth.Token) (*oauth.User, error) {
 	client := p.config.Client(ctx, &oauth2.Token{AccessToken: token.AccessToken})
 
 	providerUserID, email, err := fetchGitHubIdentity(ctx, client)
@@ -53,18 +53,18 @@ func (p *GitHubProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken)
 		// Нет верифицированного primary email — отдаём EmailVerified: false,
 		// вызывающий код (OAuthService.Callback) обязан отказать в
 		// логине/линковке в этом случае, а не создавать аккаунт вслепую.
-		return &oauth.OAuthUser{ProviderUserID: providerUserID, EmailVerified: false}, nil
+		return &oauth.User{ProviderUserID: providerUserID, EmailVerified: false}, nil
 	}
 
-	return &oauth.OAuthUser{
+	return &oauth.User{
 		ProviderUserID: providerUserID,
 		Email:          email,
 		EmailVerified:  true,
 	}, nil
 }
 
-func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUserID string, email string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
+func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUserID, email string, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", http.NoBody)
 	if err != nil {
 		return "", "", fmt.Errorf("github build user request: %w", err)
 	}
@@ -78,7 +78,7 @@ func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUser
 			if err == nil {
 				err = fmt.Errorf("github fetch user: %w", cerr)
 			} else {
-				err = fmt.Errorf("%v; github fetch user close: %v", err, cerr)
+				err = fmt.Errorf("%w; github fetch user close: %w", err, cerr)
 			}
 		}
 	}()
@@ -113,7 +113,7 @@ func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUser
 }
 
 func fetchGitHubPrimaryVerifiedEmail(ctx context.Context, client *http.Client) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("github build emails request: %w", err)
 	}
@@ -127,7 +127,7 @@ func fetchGitHubPrimaryVerifiedEmail(ctx context.Context, client *http.Client) (
 			if err == nil {
 				err = fmt.Errorf("github fetch user: %w", cerr)
 			} else {
-				err = fmt.Errorf("%v; github fetch user close: %v", err, cerr)
+				err = fmt.Errorf("%w; github fetch user close: %w", err, cerr)
 			}
 		}
 	}()

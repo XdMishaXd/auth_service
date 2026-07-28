@@ -25,6 +25,7 @@ type Response struct {
 	RedirectURL string `json:"redirect_url" example:"https://www.google.com/"`
 }
 
+// New godoc
 // @Summary      Привязка OAuth-провайдера к существующему аккаунту
 // @Description  Запускает OAuth2-процесс привязки стороннего OAuth-провайдера к аккаунту
 // @Description  текущего аутентифицированного пользователя.
@@ -100,7 +101,7 @@ func ResponseOK(w http.ResponseWriter, r *http.Request, redirectURL string) {
 	})
 }
 
-func mapStartLoginError(err error) (int, string) {
+func mapStartLoginError(err error) (statusCode int, errForReturn string) {
 	switch {
 	case errors.Is(err, oauth.ErrOAuthProviderNotFound):
 		return http.StatusNotFound, "unknown oauth provider"

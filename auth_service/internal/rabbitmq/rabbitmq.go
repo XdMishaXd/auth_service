@@ -41,7 +41,7 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 		closeErr := ch.Close()
 		closeErr2 := conn.Close()
 
-		return nil, fmt.Errorf("%s: %w; ch.Close: %v; conn.Close: %v", op, err, closeErr, closeErr2)
+		return nil, fmt.Errorf("%s: %w; ch.Close: %w; conn.Close: %w", op, err, closeErr, closeErr2)
 	}
 
 	q, err := ch.QueueDeclare(
@@ -58,7 +58,7 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 		closeErr := ch.Close()
 		closeErr2 := conn.Close()
 
-		return nil, fmt.Errorf("%s: %w; ch.Close: %v; conn.Close: %v", op, err, closeErr, closeErr2)
+		return nil, fmt.Errorf("%s: %w; ch.Close: %w; conn.Close: %w", op, err, closeErr, closeErr2)
 	}
 
 	return &RabbitMQClient{conn: conn, channel: ch, queue: q}, nil

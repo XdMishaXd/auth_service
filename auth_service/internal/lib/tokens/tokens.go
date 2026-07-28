@@ -12,7 +12,7 @@ import (
 
 // generateOpaque — общая механика: id + random verifier + hash.
 // Не экспортируется — используется только внутри конструкторов конкретных токенов.
-func generateOpaque(id string) (string, string, []byte, error) {
+func generateOpaque(id string) (tokenID, fullToken string, hash []byte, err error) {
 	if id == "" {
 		newID, err := uuid.NewV7()
 		if err != nil {
@@ -28,21 +28,21 @@ func generateOpaque(id string) (string, string, []byte, error) {
 	}
 
 	verifier := base64.RawURLEncoding.EncodeToString(b)
-	fullToken := id + "." + verifier
+	fullToken = id + "." + verifier
 
 	sum := sha256.Sum256([]byte(verifier))
-	hash := sum[:]
+	hash = sum[:]
 
 	return id, fullToken, hash, nil
 }
 
-// RefreshToken — multi-use до истечения/logout, ротируется.
-func NewRefreshToken(id string) (string, string, []byte, error) {
+// NewRefreshToken — multi-use до истечения/logout, ротируется.
+func NewRefreshToken(id string) (tokenID, fullToken string, hash []byte, err error) {
 	return generateOpaque(id)
 }
 
-// ResetToken — строго one-time, короткий TTL, задаётся в вызывающем коде
-func NewResetToken(id string) (string, string, []byte, error) {
+// NewResetToken — строго one-time, короткий TTL, задаётся в вызывающем коде
+func NewResetToken(id string) (tokenID, fullToken string, hash []byte, err error) {
 	return generateOpaque(id)
 }
 
