@@ -143,7 +143,7 @@ func (rl *RateLimit) byEmail(endpoint string, policy rateLimit.Policy) func(http
 
 func (rl *RateLimit) bySessionID(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
-		return "session_id", sessionIDParser.FromContext(r.Context())
+		return "session_id", sessionIDParser.FromContext(r.Context(), rl.log)
 	}, FailClosed)
 }
 
