@@ -2,11 +2,14 @@ package swaggerAuth
 
 import (
 	"crypto/subtle"
+	"log/slog"
 	"net/http"
+
+	sl "auth_service/internal/lib/logger"
 )
 
-// * middleware для защиты Swagger
-func New(username, password string) func(http.Handler) http.Handler {
+// New - middleware для защиты Swagger
+func New(log *slog.Logger, username, password string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Если credentials пустые, Swagger недоступен
@@ -23,7 +26,10 @@ func New(username, password string) func(http.Handler) http.Handler {
 			if !ok || !usernameMatch || !passwordMatch {
 				w.Header().Set("WWW-Authenticate", `Basic realm="Swagger Documentation"`)
 				w.WriteHeader(http.StatusUnauthorized)
-				_, _ = w.Write([]byte("Unauthorized"))
+
+				if _, err := w.Write([]byte("Unauthorized")); err != nil {
+					log.Warn("failed to write header", sl.Err(err))
+				}
 
 				return
 			}

@@ -25,7 +25,7 @@ type emailPayload struct {
 	Email string `json:"email"`
 }
 
-// Middleware читает поле "email" из JSON body запроса, кладёт его в контекст
+// New - middleware читает поле "email" из JSON body запроса, кладёт его в контекст
 // и восстанавливает body, чтобы хендлер мог прочитать его снова.
 //
 // Если body невалиден или email отсутствует — middleware НЕ блокирует запрос
@@ -67,7 +67,10 @@ func New(next http.Handler, log *slog.Logger) http.Handler {
 
 // FromContext достаёт email, положенный Middleware. Возвращает пустую
 // строку, если middleware не отрабатывал или email отсутствовал в body.
-func FromContext(ctx context.Context) string {
-	email, _ := ctx.Value(emailKey).(string)
+func FromContext(ctx context.Context, log *slog.Logger) string {
+	email, ok := ctx.Value(emailKey).(string)
+	if !ok {
+		log.Warn("failed to extraxt email from context")
+	}
 	return email
 }

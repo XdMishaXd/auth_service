@@ -11,6 +11,7 @@ import (
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	emailParser "auth_service/internal/http_server/middleware/email_parser"
 	sessionIDParser "auth_service/internal/http_server/middleware/session_id_parser"
+	sl "auth_service/internal/lib/logger"
 	rateLimit "auth_service/internal/ratelimit"
 )
 
@@ -136,7 +137,7 @@ func (rl *RateLimit) byIP(endpoint string, policy rateLimit.Policy) func(http.Ha
 
 func (rl *RateLimit) byEmail(endpoint string, policy rateLimit.Policy) func(http.Handler) http.Handler {
 	return rl.build(endpoint, policy, func(r *http.Request) (string, string) {
-		return "email", emailParser.FromContext(r.Context())
+		return "email", emailParser.FromContext(r.Context(), rl.log)
 	}, FailClosed)
 }
 
@@ -178,7 +179,10 @@ func (rl *RateLimit) build(
 					)
 					if onFail == FailClosed {
 						w.WriteHeader(http.StatusServiceUnavailable)
-						_, _ = w.Write([]byte(`{"status":"error","error":"service temporarily unavailable"}`))
+						_, err = w.Write([]byte(`{"status":"error","error":"service temporarily unavailable"}`))
+						if err != nil {
+							rl.log.Warn("failed to write header", sl.Err(err))
+						}
 						return
 					}
 					next.ServeHTTP(w, r)
@@ -192,7 +196,10 @@ func (rl *RateLimit) build(
 			if !decision.Allowed {
 				w.Header().Set("Retry-After", strconv.Itoa(int(decision.RetryAfter/time.Second)+1))
 				w.WriteHeader(http.StatusTooManyRequests)
-				_, _ = w.Write([]byte(`{"status":"error","error":"rate limit exceeded"}`))
+				_, err = w.Write([]byte(`{"status":"error","error":"rate limit exceeded"}`))
+				if err != nil {
+					rl.log.Warn("failed to write header", sl.Err(err))
+				}
 				return
 			}
 

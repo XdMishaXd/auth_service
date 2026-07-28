@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"auth_service/internal/lib/jwt"
+	jwtGen "auth_service/internal/lib/jwt"
 	"auth_service/internal/lib/tokens"
 	"auth_service/internal/lib/verification"
 	"auth_service/internal/models"
@@ -310,7 +310,7 @@ func (a *Auth) Refresh(
 		return "", "", ErrInvalidAppID
 	}
 
-	accessToken, err := jwt.NewToken(*user, *app, a.tokenTTL)
+	accessToken, err := jwtGen.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		log.Error("failed to generate access token", sl.Err(err))
 		return "", "", err
@@ -604,7 +604,7 @@ func (a *Auth) Disable2FA(
 
 // * IssueTokens генерирует access и refresh токены и сохраняет refresh в БД.
 func (a *Auth) IssueTokens(ctx context.Context, user *models.User, app *models.App) (accessToken, refreshToken string, err error) {
-	accessToken, err = jwt.NewToken(*user, *app, a.tokenTTL)
+	accessToken, err = jwtGen.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		a.Log.Error("failed to generate access token", sl.Err(err))
 		return "", "", err

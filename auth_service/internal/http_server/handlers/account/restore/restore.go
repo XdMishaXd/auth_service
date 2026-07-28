@@ -47,10 +47,10 @@ type Response struct {
 // @Produce      json
 // @Param        request  body      Request  true  "Email + (пароль ИЛИ session_id+token) + app_id"
 // @Success      200  {object}  Response       "Аккаунт восстановлен, выданы токены"
-// @Failure      400  {object}  ErrorResponse  "Невалидный запрос"
-// @Failure      401  {object}  ErrorResponse  "Неверный пароль или код подтверждения, аккаунт не найден, не был удалён или grace period истёк"
-// @Failure      429  {object}  ErrorResponse  "Превышен лимит запросов"
-// @Failure      500  {object}  ErrorResponse  "Внутренняя ошибка сервера"
+// @Failure      400  {object}  object{status=string,error=string}  "Невалидный запрос"
+// @Failure      401  {object}  object{status=string,error=string}  "Неверный пароль или код подтверждения, аккаунт не найден, не был удалён или grace period истёк"
+// @Failure      429  {object}  object{status=string,error=string}  "Превышен лимит запросов"
+// @Failure      500  {object}  object{status=string,error=string}  "Внутренняя ошибка сервера"
 // @Router       /account/restore [post]
 func New(
 	log *slog.Logger,

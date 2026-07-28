@@ -170,7 +170,7 @@ const docTemplate = `{
         },
         "/account/restore": {
             "post": {
-                "description": "Отменяет soft-delete, если grace period (7 дней) ещё не\nистёк. Требует подтверждения: паролем (если он установлен)\nлибо magic-link кодом, полученным через\n/account/restore/request-confirmation (для oauth-only\nпользователей без пароля). Неаутентифицированный эндпоинт.",
+                "description": "Отменяет soft-delete, если grace period (7 дней) ещё не\nистёк, и сразу выдаёт access/refresh токены. Требует\nподтверждения: паролем (если он установлен) либо\nmagic-link токеном, полученным через\n/account/restore/request-confirmation (для oauth-only\nпользователей без пароля). Неаутентифицированный эндпоинт.",
                 "consumes": [
                     "application/json"
                 ],
@@ -183,7 +183,7 @@ const docTemplate = `{
                 "summary": "Восстановить удалённый аккаунт",
                 "parameters": [
                     {
-                        "description": "Email + (пароль ИЛИ session_id+code)",
+                        "description": "Email + (пароль ИЛИ session_id+token) + app_id",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -193,8 +193,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "Аккаунт восстановлен"
+                    "200": {
+                        "description": "Аккаунт восстановлен, выданы токены",
+                        "schema": {
+                            "$ref": "#/definitions/internal_http_server_handlers_account_restore.Response"
+                        }
                     },
                     "400": {
                         "description": "Невалидный запрос",
@@ -1994,9 +1997,14 @@ const docTemplate = `{
         "internal_http_server_handlers_account_restore.Request": {
             "type": "object",
             "required": [
+                "app_id",
                 "email"
             ],
             "properties": {
+                "app_id": {
+                    "type": "integer",
+                    "example": 1
+                },
                 "email": {
                     "type": "string",
                     "example": "example@domain.com"
@@ -2012,6 +2020,25 @@ const docTemplate = `{
                 "token": {
                     "type": "string",
                     "example": "abcDEF123..."
+                }
+            }
+        },
+        "internal_http_server_handlers_account_restore.Response": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string",
+                    "example": "error"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "ok"
                 }
             }
         },
