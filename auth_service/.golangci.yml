@@ -89,6 +89,9 @@ linters:
         - G104
 
   exclusions:
+    paths:
+      - docs
+
     rules:
       # Тестовые файлы
       - path: _test\.go
@@ -127,5 +130,3 @@ formatters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-dirs:
-    - docs
