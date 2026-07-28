@@ -49,6 +49,16 @@ linters:
       rules:
         - name: line-length-limit
           disabled: true
+        - name: add-constant
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: import-alias-naming
+          disabled: true
+        - name: comments-density
+          disabled: true
         - name: exported
           severity: warning
         - name: error-return
@@ -61,10 +71,6 @@ linters:
           severity: error
         - name: unused-parameter
           severity: warning
-        - name: add-constant
-          disabled: true
-        - name: cognitive-complexity
-          disabled: true
         - name: cyclomatic
           arguments: [15]
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 )
 
@@ -30,7 +31,7 @@ func New(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		var peek bodyPeek
-		_ = json.Unmarshal(body, &peek) //nolint:errcheck
+		_ = json.Unmarshal(body, &peek) //nolint:errcheck // JSON malformed → handler returns 400 on decode below
 
 		ctx := context.WithValue(r.Context(), sessionIDContextKey, peek.SessionID)
 
@@ -38,7 +39,10 @@ func New(next http.Handler) http.Handler {
 	})
 }
 
-func FromContext(ctx context.Context) string {
-	sessionID, _ := ctx.Value(sessionIDContextKey).(string)
+func FromContext(ctx context.Context, log *slog.Logger) string {
+	sessionID, ok := ctx.Value(sessionIDContextKey).(string)
+	if !ok {
+		log.Warn("failed to extraxt email from context")
+	}
 	return sessionID
 }
