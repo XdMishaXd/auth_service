@@ -24,6 +24,7 @@ type Response struct {
 	RefreshToken string `json:"refresh_token" example:"abcDEF123..."`
 }
 
+// New godoc
 // @Summary      Callback OAuth-провайдера
 // @Description  Обрабатывает перенаправление от OAuth-провайдера после того, как пользователь предоставил или отклонил доступ.
 // @Description  Проверяет параметр state на соответствие ранее сохранённому значению (авторизация или привязка аккаунта),
@@ -103,7 +104,7 @@ func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToke
 	})
 }
 
-func mapOAuthCallbackError(err error) (int, string) {
+func mapOAuthCallbackError(err error) (statusCode int, errForReturn string) {
 	switch {
 	case errors.Is(err, oauth.ErrOAuthProviderNotFound):
 		return http.StatusNotFound, "unknown oauth provider"

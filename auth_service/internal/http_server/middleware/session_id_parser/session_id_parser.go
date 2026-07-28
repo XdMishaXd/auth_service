@@ -30,7 +30,7 @@ func New(next http.Handler) http.Handler {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 
 		var peek bodyPeek
-		_ = json.Unmarshal(body, &peek) // намеренно игнорируем ошибку — если json битый, хэндлер сам вернёт 400 при decode
+		_ = json.Unmarshal(body, &peek) //nolint:errcheck
 
 		ctx := context.WithValue(r.Context(), sessionIDContextKey, peek.SessionID)
 

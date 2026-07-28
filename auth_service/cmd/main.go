@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
-	twoFactorAuth "auth_service/internal/auth/2fa"
 	"auth_service/internal/auth/oauth"
 	"auth_service/internal/auth/oauth/providers"
+	"auth_service/internal/auth/twoFactorAuth"
 	"auth_service/internal/config"
 	"auth_service/internal/http_server/handlers/2fa/disable"
 	"auth_service/internal/http_server/handlers/2fa/enable"
@@ -85,7 +85,7 @@ func main() {
 		cfg.OAuth.GitHubRedirectURL,
 	)
 
-	oauthProviders := map[string]oauth.OAuthProvider{
+	oauthProviders := map[string]oauth.Provider{
 		"google": googleProvider,
 		"github": githubProvider,
 	}

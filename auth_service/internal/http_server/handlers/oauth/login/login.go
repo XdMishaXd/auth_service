@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/render"
 )
 
+// New godoc
 // @Summary      Начало OAuth-авторизации
 // @Description  Запускает процесс OAuth2-авторизации для указанного OAuth-провайдера.
 // @Description  Проверяет корректность app_id и redirect_uri, а также соответствие
@@ -81,6 +82,7 @@ func New(
 			return
 		}
 
-		http.Redirect(w, r, authURL, http.StatusFound)
+		// authURL строится из статического provider config
+		http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // G710: authURL is server-built, not user-controlled
 	}
 }

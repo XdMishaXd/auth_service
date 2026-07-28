@@ -1,6 +1,9 @@
 package storage
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var (
 	ErrUserAlreadyExists = errors.New("user already exists")
@@ -41,6 +44,8 @@ var (
 //
 // Возвращает: {allowed (0/1), retry_after_ms, remaining}
 const (
+	AccountRestoreWindow = 7 * 24 * time.Hour
+
 	GCRAScript = `
 		local key = KEYS[1]
 		local burst = tonumber(ARGV[1])

@@ -19,7 +19,7 @@ const oauthStatePrefix = "oauth_state:"
 func (r *RedisRepo) SaveOAuthState(
 	ctx context.Context,
 	state string,
-	payload oauth.OAuthStatePayload,
+	payload oauth.StatePayload,
 	ttl time.Duration,
 ) error {
 	const op = "storage.redis.SaveOAuthState"
@@ -42,7 +42,7 @@ func (r *RedisRepo) SaveOAuthState(
 func (r *RedisRepo) GetAndDeleteOAuthState(
 	ctx context.Context,
 	state string,
-) (*oauth.OAuthStatePayload, error) {
+) (*oauth.StatePayload, error) {
 	const op = "storage.redis.GetAndDeleteOAuthState"
 
 	key := oauthStatePrefix + state
@@ -56,7 +56,7 @@ func (r *RedisRepo) GetAndDeleteOAuthState(
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	var payload oauth.OAuthStatePayload
+	var payload oauth.StatePayload
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
 		return nil, fmt.Errorf("%s: unmarshal payload: %w", op, err)
 	}

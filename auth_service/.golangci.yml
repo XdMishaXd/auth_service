@@ -45,7 +45,10 @@ linters:
         - .Wrapf(
 
     revive:
+      enable-all-rules: true
       rules:
+        - name: line-length-limit
+          disable: true
         - name: exported
           severity: warning
         - name: error-return
@@ -58,6 +61,12 @@ linters:
           severity: error
         - name: unused-parameter
           severity: warning
+        - name: add-constant
+          disable: true
+        - name: cognitive-complexity
+          disable: true
+        - name: cyclomatic
+          arguments: [15]
 
     gocritic:
       enabled-tags:
@@ -78,11 +87,13 @@ linters:
         linters:
           - wrapcheck
           - gosec
+          - errcheck
 
       # Моки в тестах
       - path: _test\.go
         linters:
-          - unused-parameter
+          - revive
+        text: "unused-parameter"
 
       # QF1008
       - path: internal/storage/postgres/
@@ -99,12 +110,6 @@ linters:
         linters:
           - staticcheck
         text: "QF1008"
-
-      # Намеренно не проверяемые ошибки
-      - path: internal/http_server/middleware/session_id_parser/session_id_parser.go
-        linters:
-          - errcheck
-        text: "Error return value is not checked"
 
 formatters:
   enable:

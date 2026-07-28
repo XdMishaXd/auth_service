@@ -32,19 +32,19 @@ func (p *GoogleProvider) AuthURL(state string) string {
 	return p.config.AuthCodeURL(state, oauth2.AccessTypeOnline)
 }
 
-func (p *GoogleProvider) Exchange(ctx context.Context, code string) (*oauth.OAuthToken, error) {
+func (p *GoogleProvider) Exchange(ctx context.Context, code string) (*oauth.Token, error) {
 	token, err := p.config.Exchange(ctx, code)
 	if err != nil {
 		return nil, fmt.Errorf("google exchange: %w", err)
 	}
 
-	return &oauth.OAuthToken{AccessToken: token.AccessToken}, nil
+	return &oauth.Token{AccessToken: token.AccessToken}, nil
 }
 
-func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken) (*oauth.OAuthUser, error) {
+func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.Token) (*oauth.User, error) {
 	client := p.config.Client(ctx, &oauth2.Token{AccessToken: token.AccessToken})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v3/userinfo", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://www.googleapis.com/oauth2/v3/userinfo", http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("google build userinfo request: %w", err)
 	}
@@ -58,7 +58,7 @@ func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken)
 			if err == nil {
 				err = fmt.Errorf("google fetch user: %w", cerr)
 			} else {
-				err = fmt.Errorf("%v; google fetch user close: %v", err, cerr)
+				err = fmt.Errorf("%w; google fetch user close: %w", err, cerr)
 			}
 		}
 	}()
@@ -80,7 +80,7 @@ func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.OAuthToken)
 		return nil, fmt.Errorf("google userinfo: missing sub")
 	}
 
-	return &oauth.OAuthUser{
+	return &oauth.User{
 		ProviderUserID: body.Sub,
 		Email:          body.Email,
 		EmailVerified:  body.EmailVerified,
