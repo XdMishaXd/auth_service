@@ -23,15 +23,8 @@ jobs:
         working-directory: ./auth_service
         run: go vet ./...
 
-      - name: Install golangci-lint
-        run: |
-          GOBIN="${GITHUB_WORKSPACE}/bin"
-          mkdir -p "$GOBIN"
-          GOBIN="$GOBIN" go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-          echo "$GOBIN" >> $GITHUB_PATH
-
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           working-directory: ./auth_service
           version: v2.12.2
