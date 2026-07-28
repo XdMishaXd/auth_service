@@ -26,6 +26,9 @@ definitions:
     type: object
   internal_http_server_handlers_account_restore.Request:
     properties:
+      app_id:
+        example: 1
+        type: integer
       email:
         example: example@domain.com
         type: string
@@ -39,7 +42,21 @@ definitions:
         example: abcDEF123...
         type: string
     required:
+    - app_id
     - email
+    type: object
+  internal_http_server_handlers_account_restore.Response:
+    properties:
+      access_token:
+        type: string
+      error:
+        example: error
+        type: string
+      refresh_token:
+        type: string
+      status:
+        example: ok
+        type: string
     type: object
   internal_http_server_handlers_infrastructure_health.Response:
     properties:
@@ -225,12 +242,13 @@ paths:
       - application/json
       description: |-
         Отменяет soft-delete, если grace period (7 дней) ещё не
-        истёк. Требует подтверждения: паролем (если он установлен)
-        либо magic-link кодом, полученным через
+        истёк, и сразу выдаёт access/refresh токены. Требует
+        подтверждения: паролем (если он установлен) либо
+        magic-link токеном, полученным через
         /account/restore/request-confirmation (для oauth-only
         пользователей без пароля). Неаутентифицированный эндпоинт.
       parameters:
-      - description: Email + (пароль ИЛИ session_id+code)
+      - description: Email + (пароль ИЛИ session_id+token) + app_id
         in: body
         name: request
         required: true
@@ -239,8 +257,10 @@ paths:
       produces:
       - application/json
       responses:
-        "204":
-          description: Аккаунт восстановлен
+        "200":
+          description: Аккаунт восстановлен, выданы токены
+          schema:
+            $ref: '#/definitions/internal_http_server_handlers_account_restore.Response'
         "400":
           description: Невалидный запрос
           schema:

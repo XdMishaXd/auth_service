@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"auth_service/internal/lib/jwt"
+	jwtGen "auth_service/internal/lib/jwt"
 
 	"github.com/go-chi/render"
 )
@@ -14,7 +14,7 @@ type contextKey string
 
 const claimsContextKey contextKey = "claims"
 
-func RequireAuth(apps jwt.AppSecretProvider) func(http.Handler) http.Handler {
+func RequireAuth(apps jwtGen.AppSecretProvider) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -27,7 +27,7 @@ func RequireAuth(apps jwt.AppSecretProvider) func(http.Handler) http.Handler {
 
 			tokenString := strings.TrimPrefix(header, prefix)
 
-			claims, err := jwt.ParseAndVerify(r.Context(), tokenString, apps)
+			claims, err := jwtGen.ParseAndVerify(r.Context(), tokenString, apps)
 			if err != nil {
 				unauthorized(w, r)
 				return
@@ -44,7 +44,7 @@ func unauthorized(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, map[string]string{"error": "invalid or expired access token"})
 }
 
-func ClaimsFromContext(ctx context.Context) (*jwt.Claims, bool) {
-	claims, ok := ctx.Value(claimsContextKey).(*jwt.Claims)
+func ClaimsFromContext(ctx context.Context) (*jwtGen.Claims, bool) {
+	claims, ok := ctx.Value(claimsContextKey).(*jwtGen.Claims)
 	return claims, ok
 }

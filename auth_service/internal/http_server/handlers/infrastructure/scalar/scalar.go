@@ -2,12 +2,15 @@ package scalarHandler
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
+
+	sl "auth_service/internal/lib/logger"
 )
 
 // New отдаёт HTML-страницу Scalar API Reference, которая сама
 // подгружает OpenAPI-спек по specURL (например "/swagger/doc.json").
-func New(specURL string) http.HandlerFunc {
+func New(log *slog.Logger, specURL string) http.HandlerFunc {
 	page := fmt.Sprintf(`<!doctype html>
 <html>
 <head>
@@ -23,6 +26,9 @@ func New(specURL string) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(page))
+		_, err := w.Write([]byte(page))
+		if err != nil {
+			log.Warn("failed to send docs", sl.Err(err))
+		}
 	}
 }

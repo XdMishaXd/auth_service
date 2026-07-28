@@ -43,14 +43,14 @@ import (
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	metricsCollector "auth_service/internal/http_server/middleware/metrics_collector"
 	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
-	swaggerAuth "auth_service/internal/http_server/middleware/swagger-auth"
-	"auth_service/internal/lib/jwt"
+	swaggerAuth "auth_service/internal/http_server/middleware/swagger_auth"
+	jwtGen "auth_service/internal/lib/jwt"
 	customValidator "auth_service/internal/lib/validation/custom_validator"
-	"auth_service/internal/metrics"
+	metricsService "auth_service/internal/metrics"
 	"auth_service/internal/rabbitmq"
 	rateLimit "auth_service/internal/ratelimit"
 	"auth_service/internal/storage/postgres"
-	"auth_service/internal/storage/redis"
+	redisClient "auth_service/internal/storage/redis"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -101,7 +101,7 @@ func main() {
 	postgresql, err := postgres.New(ctx, cfg, log)
 	if err != nil {
 		log.Error("failed to connect postgres", slog.String("err", err.Error()))
-		os.Exit(1)
+		return
 	}
 
 	log.Info("postgresql connected successfully",
@@ -110,10 +110,10 @@ func main() {
 		slog.String("database", cfg.Postgres.DBName),
 	)
 
-	redis, err := redis.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.Db)
+	redis, err := redisClient.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.Db)
 	if err != nil {
 		log.Error("failed to connect redis", slog.String("err", err.Error()))
-		os.Exit(1)
+		return
 	}
 
 	log.Info("redis connected successfully",
@@ -124,7 +124,7 @@ func main() {
 	rabbitMQClient, err := rabbitmq.New(cfg.RabbitMQ.URL, cfg.RabbitMQ.QueueName)
 	if err != nil {
 		log.Error("failed to connect rabbitmq", slog.String("err", err.Error()))
-		os.Exit(1)
+		return
 	}
 
 	log.Info("rabbitmq connected successfully")
@@ -132,7 +132,7 @@ func main() {
 	limiter, err := rateLimit.New(ctx, redis)
 	if err != nil {
 		log.Error("failed to init rate limiter", slog.String("err", err.Error()))
-		os.Exit(1)
+		return
 	}
 
 	rlMiddlewares := httpRateLimit.New(limiter, log)
@@ -167,7 +167,7 @@ func main() {
 
 	requestValidator := customValidator.New()
 
-	metrics := metrics.New()
+	metrics := metricsService.New()
 
 	router := setupRouter(
 		log,
@@ -203,7 +203,7 @@ func main() {
 	select {
 	case err := <-serverErrors:
 		log.Error("server error", slog.String("error", err.Error()))
-		os.Exit(1)
+		return
 
 	case sig := <-shutdown:
 		log.Info("shutdown signal received", slog.String("signal", sig.String()))
@@ -261,11 +261,11 @@ func setupRouter(
 	log *slog.Logger,
 	cfg *config.Config,
 	validate *validator.Validate,
-	m *metrics.Metrics,
+	m *metricsService.Metrics,
 	rateLimiter *httpRateLimit.RateLimit,
 	authService *auth.Auth,
 	oauthService *oauth.OAuthService,
-	appProvider jwt.AppSecretProvider,
+	appProvider jwtGen.AppSecretProvider,
 	msgBroker *rabbitmq.RabbitMQClient,
 	allowedRedirectHosts map[string]bool,
 ) *chi.Mux {
@@ -283,9 +283,9 @@ func setupRouter(
 
 		if cfg.Swagger.Enabled {
 			r.Group(func(r chi.Router) {
-				r.Use(swaggerAuth.New(cfg.Swagger.Username, cfg.Swagger.Password))
-				r.Get("/swagger/doc.json", docsHandler.New())
-				r.Get("/docs", scalarHandler.New("/swagger/doc.json"))
+				r.Use(swaggerAuth.New(log, cfg.Swagger.Username, cfg.Swagger.Password))
+				r.Get("/swagger/doc.json", docsHandler.New(log))
+				r.Get("/docs", scalarHandler.New(log, "/swagger/doc.json"))
 			})
 		}
 

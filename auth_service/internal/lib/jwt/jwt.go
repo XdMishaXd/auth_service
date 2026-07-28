@@ -1,9 +1,10 @@
-package jwt
+package jwtGen
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"auth_service/internal/models"
@@ -28,19 +29,21 @@ type Claims struct {
 	AppID    int32
 }
 
+// NewToken генерирует jwt
 func NewToken(user models.User, app models.App, duration time.Duration) (string, error) {
-	token := jwt.New(jwt.SigningMethodHS256)
+	claims := jwt.MapClaims{
+		"uid":      user.ID,
+		"username": user.Username,
+		"email":    user.Email,
+		"exp":      time.Now().Add(duration).Unix(),
+		"app_id":   app.ID,
+	}
 
-	claims := token.Claims.(jwt.MapClaims)
-	claims["uid"] = user.ID
-	claims["username"] = user.Username
-	claims["email"] = user.Email
-	claims["exp"] = time.Now().Add(duration).Unix()
-	claims["app_id"] = app.ID
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	tokenString, err := token.SignedString([]byte(app.Secret))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to generate jwt: %w", err)
 	}
 
 	return tokenString, nil
@@ -105,23 +108,55 @@ func unverifiedAppID(tokenString string) (int32, error) {
 }
 
 func extractClaims(claims jwt.MapClaims) (*Claims, error) {
-	uidFloat, ok := claims["uid"].(float64)
-	if !ok {
+	var uidInt int64
+	switch v := claims["uid"].(type) {
+	case float64:
+		uidInt = int64(v)
+	case int64:
+		uidInt = v
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return nil, ErrInvalidToken
+		}
+		uidInt = n
+	default:
 		return nil, ErrInvalidToken
 	}
 
-	username, _ := claims["username"].(string)
-	email, _ := claims["email"].(string)
-
-	appIDFloat, ok := claims["app_id"].(float64)
+	username, ok := claims["username"].(string)
 	if !ok {
+		username = ""
+	}
+
+	email, ok := claims["email"].(string)
+	if !ok {
+		email = ""
+	}
+
+	var appIDInt int32
+	switch v := claims["app_id"].(type) {
+	case float64:
+		appIDInt = int32(v)
+	case int64:
+		if v < -(1<<31) || v > (1<<31)-1 {
+			return nil, ErrInvalidToken
+		}
+		appIDInt = int32(v)
+	case string:
+		n, err := strconv.ParseInt(v, 10, 32)
+		if err != nil {
+			return nil, ErrInvalidToken
+		}
+		appIDInt = int32(n)
+	default:
 		return nil, ErrInvalidToken
 	}
 
 	return &Claims{
-		UserID:   int64(uidFloat),
+		UserID:   uidInt,
 		Username: username,
 		Email:    email,
-		AppID:    int32(appIDFloat),
+		AppID:    appIDInt,
 	}, nil
 }
