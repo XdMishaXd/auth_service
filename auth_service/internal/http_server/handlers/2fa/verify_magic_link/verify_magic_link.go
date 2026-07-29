@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
-	"auth_service/internal/auth/twoFactorAuth"
+	twofactorauth "auth_service/internal/auth/two_factor_auth"
 	resp "auth_service/internal/lib/api/response"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/storage"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -92,7 +92,7 @@ func New(
 		accessToken, refreshToken, err := authMiddleware.VerifyMagicLink(ctx, req.SessionID, req.Token)
 		if err != nil {
 			switch {
-			case errors.Is(err, twoFactorAuth.ErrMagicLinkVerificationFailed),
+			case errors.Is(err, twofactorauth.ErrMagicLinkVerificationFailed),
 				errors.Is(err, storage.ErrPendingSessionNotFound):
 				reqLog.Warn("magic link verification failed", sl.Err(err))
 

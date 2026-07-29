@@ -1,4 +1,4 @@
-package emailParser
+package emailparser
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 )
 
 // ctxKey — непубличный типизированный тип ключа контекста, чтобы исключить

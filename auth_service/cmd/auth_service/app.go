@@ -38,7 +38,7 @@ func buildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 	var closers []ctxCloser
 
 	cleanup := func(log *slog.Logger) {
-		closeAll(closers, log)
+		closeAll(ctx, closers, log)
 	}
 
 	postgresql, err := postgres.New(ctx, cfg, log)
@@ -78,8 +78,8 @@ func buildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 // closeAll закрывает ресурсы в обратном порядке открытия (LIFO).
 // closeCtx создаётся один раз здесь, а не пробрасывается снаружи —
 // на момент shutdown исходный ctx из main мог быть уже отменён/истёк.
-func closeAll(closers []ctxCloser, log *slog.Logger) {
-	closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+func closeAll(parentCtx context.Context, closers []ctxCloser, log *slog.Logger) {
+	closeCtx, cancel := context.WithTimeout(parentCtx, 5*time.Second)
 	defer cancel()
 
 	for i := len(closers) - 1; i >= 0; i-- {

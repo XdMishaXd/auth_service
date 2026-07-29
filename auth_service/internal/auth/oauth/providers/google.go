@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -11,6 +12,8 @@ import (
 	"golang.org/x/oauth2"
 	googleoauth "golang.org/x/oauth2/google"
 )
+
+var ErrMissingSub = errors.New("google userinfo: missing sub")
 
 type GoogleProvider struct {
 	config *oauth2.Config
@@ -77,7 +80,7 @@ func (p *GoogleProvider) FetchUser(ctx context.Context, token *oauth.Token) (*oa
 	}
 
 	if body.Sub == "" {
-		return nil, fmt.Errorf("google userinfo: missing sub")
+		return nil, ErrMissingSub
 	}
 
 	return &oauth.User{

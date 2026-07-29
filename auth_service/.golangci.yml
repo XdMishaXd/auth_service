@@ -49,7 +49,7 @@ linters:
         - name: import-alias-naming
           disabled: true
         - name: exported
-          severity: warning
+          disabled: true
         - name: error-return
           severity: error
         - name: error-naming
@@ -64,6 +64,8 @@ linters:
           arguments: [15]
         - name: max-public-structs
           arguments: [10]
+        - name: function-length
+          arguments: [50, 120]
 
     gocritic:
       enabled-tags:

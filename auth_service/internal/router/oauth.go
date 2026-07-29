@@ -4,7 +4,7 @@ import (
 	"auth_service/internal/http_server/handlers/oauth/accounts"
 	"auth_service/internal/http_server/handlers/oauth/callback"
 	"auth_service/internal/http_server/handlers/oauth/link"
-	ologin "auth_service/internal/http_server/handlers/oauth/login"
+	ologin "auth_service/internal/http_server/handlers/oauth/oauth_login"
 	"auth_service/internal/http_server/handlers/oauth/unlink"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 

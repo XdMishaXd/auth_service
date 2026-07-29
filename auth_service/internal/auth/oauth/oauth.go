@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"auth_service/internal/auth"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 )
@@ -134,7 +134,6 @@ func (s *OAuthService) Callback(
 	state string,
 ) (accessToken, refreshToken string, err error) {
 	const op = "OAuthService.Callback"
-
 	log := s.log.With(slog.String("op", op))
 
 	p, err := s.provider(providerName)
@@ -142,8 +141,7 @@ func (s *OAuthService) Callback(
 		return "", "", err
 	}
 
-	// GETDEL — до любых внешних вызовов. Защищает от replay и двойного клика
-	// независимо от того, что случится дальше в этой функции.
+	// GETDEL — до любых внешних вызовов. Защищает от replay и двойного клика.
 	payload, err := s.stateStore.GetAndDeleteOAuthState(ctx, state)
 	if err != nil {
 		if errors.Is(err, storage.ErrOAuthStateNotFound) {
@@ -152,90 +150,23 @@ func (s *OAuthService) Callback(
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	exCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	token, err := p.Exchange(exCtx, code)
+	oauthUser, err := exchangeAndFetch(ctx, p, code, log, op)
 	if err != nil {
-		log.Error("provider exchange failed", sl.Err(err))
-		return "", "", fmt.Errorf("%s: exchange: %w", op, err)
+		return "", "", err
 	}
-
-	oauthUser, err := p.FetchUser(exCtx, token)
-	if err != nil {
-		log.Error("provider fetch user failed", sl.Err(err))
-		return "", "", fmt.Errorf("%s: fetch user: %w", op, err)
-	}
-
 	if !oauthUser.EmailVerified {
 		return "", "", ErrOAuthEmailNotVerified
 	}
 
 	app, err := s.auth.AppProvider.App(ctx, payload.AppID)
 	if err != nil {
-		return "", "", auth.ErrInvalidAppID
+		return "", "", fmt.Errorf("%s: load app: %w", op, err)
 	}
 
-	// Linking flow: юзер уже залогинен, привязываем provider к его аккаунту.
 	if payload.UserID != 0 {
-		if err := s.accountRepo.SaveOAuthAccount(ctx, payload.UserID, providerName, oauthUser.ProviderUserID, oauthUser.Email); err != nil {
-			return "", "", fmt.Errorf("%s: link account: %w", op, err)
-		}
-
-		user, err := s.auth.UsrProvider.UserByID(ctx, payload.UserID)
-		if err != nil {
-			return "", "", fmt.Errorf("%s: load linked user: %w", op, err)
-		}
-		if user.DeletedAt != nil {
-			return "", "", ErrAccountPendingDeletion
-		}
-
-		return s.auth.IssueTokens(ctx, user, app)
+		return s.linkOAuthAccount(ctx, payload.UserID, providerName, oauthUser, app, op)
 	}
-
-	// Обычный login/register.
-	existing, err := s.accountRepo.OAuthAccountByProviderUserID(ctx, providerName, oauthUser.ProviderUserID)
-	switch {
-	case err == nil:
-		user, err := s.auth.UsrProvider.UserByID(ctx, existing.UserID)
-		if err != nil {
-			return "", "", fmt.Errorf("%s: load user: %w", op, err)
-		}
-		if user.DeletedAt != nil {
-			return "", "", ErrAccountPendingDeletion
-		}
-
-		return s.auth.IssueTokens(ctx, user, app)
-
-	case errors.Is(err, storage.ErrOAuthAccountNotFound):
-		if user, err := s.auth.UsrProvider.UserByEmail(ctx, oauthUser.Email); err == nil {
-			switch {
-			case user.DeletedAt != nil:
-				return "", "", ErrAccountPendingDeletion
-			case !errors.Is(err, storage.ErrUserNotFound):
-				return "", "", fmt.Errorf("%s: check existing user: %w", op, err)
-			default:
-				return "", "", ErrOAuthAccountConflict
-			}
-		}
-
-		username := deriveUsername(oauthUser.Email)
-
-		userID, err := s.accountRepo.SaveOAuthUser(ctx, oauthUser.Email, username, providerName, oauthUser.ProviderUserID)
-		if err != nil {
-			return "", "", fmt.Errorf("%s: create oauth user: %w", op, err)
-		}
-
-		user, err := s.auth.UsrProvider.UserByID(ctx, userID)
-		if err != nil {
-			return "", "", fmt.Errorf("%s: load new user: %w", op, err)
-		}
-
-		return s.auth.IssueTokens(ctx, user, app)
-
-	default:
-		return "", "", fmt.Errorf("%s: lookup oauth account: %w", op, err)
-	}
+	return s.loginOrRegisterOAuthUser(ctx, providerName, oauthUser, app, op)
 }
 
 // * Unlink отвязывает provider от юзера.
@@ -244,10 +175,10 @@ func (s *OAuthService) Unlink(ctx context.Context, userID int64, providerName st
 
 	if err := s.accountRepo.UnlinkOAuthAccount(ctx, userID, providerName); err != nil {
 		if errors.Is(err, storage.ErrOAuthLastAuthMethod) {
-			return ErrOAuthLastAuthMethod
+			return fmt.Errorf("%s: %w", op, storage.ErrOAuthLastAuthMethod)
 		}
 		if errors.Is(err, storage.ErrOAuthAccountNotFound) {
-			return err
+			return fmt.Errorf("%s: %w", op, storage.ErrOAuthAccountNotFound)
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -257,13 +188,147 @@ func (s *OAuthService) Unlink(ctx context.Context, userID int64, providerName st
 
 // ListAccounts — привязанные провайдеры юзера, для профиля/настроек.
 func (s *OAuthService) ListAccounts(ctx context.Context, userID int64) ([]*models.OAuthAccount, error) {
-	return s.accountRepo.OAuthAccountsByUserID(ctx, userID)
+	const op = "OAuthService.ListAccounts"
+
+	account, err := s.accountRepo.OAuthAccountsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return account, nil
+}
+
+// Linking flow: юзер уже залогинен, привязываем provider к его аккаунту.
+func (s *OAuthService) linkOAuthAccount(
+	ctx context.Context, userID int64, providerName string, oauthUser User, app *models.App, op string,
+) (accessToken, refreshToken string, err error) {
+	if err = s.accountRepo.SaveOAuthAccount(ctx, userID, providerName, oauthUser.ProviderUserID, oauthUser.Email); err != nil {
+		return "", "", fmt.Errorf("%s: link account: %w", op, err)
+	}
+
+	user, err := s.auth.UsrProvider.UserByID(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: load linked user: %w", op, err)
+	}
+	if user.DeletedAt != nil {
+		return "", "", ErrAccountPendingDeletion
+	}
+
+	accessToken, refreshToken, err = s.auth.IssueTokens(ctx, user, app)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func (s *OAuthService) loginOrRegisterOAuthUser(
+	ctx context.Context, providerName string, oauthUser User, app *models.App, op string,
+) (accessToken, refreshToken string, err error) {
+	existing, err := s.accountRepo.OAuthAccountByProviderUserID(ctx, providerName, oauthUser.ProviderUserID)
+	switch {
+	case err == nil:
+		return s.issueForExistingUser(ctx, existing.UserID, app, op)
+
+	case errors.Is(err, storage.ErrOAuthAccountNotFound):
+		return s.resolveByEmailOrCreate(ctx, providerName, oauthUser, app, op)
+
+	default:
+		return "", "", fmt.Errorf("%s: lookup oauth account: %w", op, err)
+	}
+}
+
+func (s *OAuthService) issueForExistingUser(
+	ctx context.Context, userID int64, app *models.App, op string,
+) (accessToken, refreshToken string, err error) {
+	user, err := s.auth.UsrProvider.UserByID(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: load user: %w", op, err)
+	}
+
+	if user.DeletedAt != nil {
+		return "", "", ErrAccountPendingDeletion
+	}
+
+	accessToken, refreshToken, err = s.auth.IssueTokens(ctx, user, app)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+// Нет oauth-связки по этому provider'у. Проверяем, не занят ли email локальным аккаунтом —
+// если да, это конфликт (нужен явный linking flow, а не тихая привязка).
+func (s *OAuthService) resolveByEmailOrCreate(
+	ctx context.Context, providerName string, oauthUser User, app *models.App, op string,
+) (accessToken, refreshToken string, err error) {
+	existingUser, err := s.auth.UsrProvider.UserByEmail(ctx, oauthUser.Email)
+	switch {
+	case err == nil:
+		if existingUser.DeletedAt != nil {
+			return "", "", ErrAccountPendingDeletion
+		}
+		return "", "", ErrOAuthAccountConflict
+
+	case errors.Is(err, storage.ErrUserNotFound):
+		return s.createOAuthUser(ctx, providerName, oauthUser, app, op)
+
+	default:
+		return "", "", fmt.Errorf("%s: check existing user: %w", op, err)
+	}
+}
+
+func (s *OAuthService) createOAuthUser(
+	ctx context.Context, providerName string, oauthUser User, app *models.App, op string,
+) (accessToken, refreshToken string, err error) {
+	username := deriveUsername(oauthUser.Email)
+
+	userID, err := s.accountRepo.SaveOAuthUser(ctx, oauthUser.Email, username, providerName, oauthUser.ProviderUserID)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: create oauth user: %w", op, err)
+	}
+
+	user, err := s.auth.UsrProvider.UserByID(ctx, userID)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: load new user: %w", op, err)
+	}
+
+	accessToken, refreshToken, err = s.auth.IssueTokens(ctx, user, app)
+	if err != nil {
+		return "", "", fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessToken, refreshToken, nil
+}
+
+func exchangeAndFetch(
+	ctx context.Context, p Provider, code string, log *slog.Logger, op string,
+) (User, error) {
+	exCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	token, err := p.Exchange(exCtx, code)
+	if err != nil {
+		log.Error("provider exchange failed", sl.Err(err))
+		return User{}, fmt.Errorf("%s: exchange: %w", op, err)
+	}
+
+	oauthUser, err := p.FetchUser(exCtx, token)
+	if err != nil {
+		log.Error("provider fetch user failed", sl.Err(err))
+		return User{}, fmt.Errorf("%s: fetch user: %w", op, err)
+	}
+
+	return *oauthUser, nil
 }
 
 func generateState() (string, error) {
+	const op = "OAuthService.generateState"
+
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }

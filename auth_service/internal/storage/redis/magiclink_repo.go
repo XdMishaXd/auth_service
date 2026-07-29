@@ -16,7 +16,7 @@ func (r *Repo) SetPendingSession(ctx context.Context, sessionID string, session 
 
 	key := pendingSessionKey(sessionID)
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"user_id":    session.UserID,
 		"app_id":     session.AppID,
 		"action":     string(session.Action),

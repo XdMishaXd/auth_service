@@ -1,4 +1,4 @@
-package httpRateLimit
+package httpratelimit
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	emailParser "auth_service/internal/http_server/middleware/email_parser"
 	sessionIDParser "auth_service/internal/http_server/middleware/session_id_parser"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	rateLimit "auth_service/internal/ratelimit"
 )
 

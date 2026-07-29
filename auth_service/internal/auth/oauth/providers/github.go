@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -11,6 +12,8 @@ import (
 	"golang.org/x/oauth2"
 	githuboauth "golang.org/x/oauth2/github"
 )
+
+var ErrMissingUserID = errors.New("github user: missing id")
 
 type GitHubProvider struct {
 	config *oauth2.Config
@@ -91,12 +94,12 @@ func fetchGitHubIdentity(ctx context.Context, client *http.Client) (providerUser
 		ID    int64  `json:"id"`
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&user); err != nil {
 		return "", "", fmt.Errorf("github decode user: %w", err)
 	}
 
 	if user.ID == 0 {
-		return "", "", fmt.Errorf("github user: missing id")
+		return "", "", ErrMissingUserID
 	}
 
 	providerUserID = fmt.Sprintf("%d", user.ID)

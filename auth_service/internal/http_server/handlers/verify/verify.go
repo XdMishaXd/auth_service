@@ -8,7 +8,7 @@ import (
 
 	"auth_service/internal/auth"
 	resp "auth_service/internal/lib/api/response"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/lib/verification"
 
 	"github.com/go-chi/chi/v5/middleware"

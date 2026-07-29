@@ -1,6 +1,7 @@
-package metricsCollector
+package metricscollector
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -69,5 +70,11 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK) // фиксируем implicit 200 явно, через нашу же логику
 	}
-	return r.ResponseWriter.Write(b)
+
+	status, err := r.ResponseWriter.Write(b)
+	if err != nil {
+		return 0, fmt.Errorf("failed to write data to the connection: %w", err)
+	}
+
+	return status, nil
 }

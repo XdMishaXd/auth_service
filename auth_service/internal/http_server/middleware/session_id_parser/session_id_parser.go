@@ -1,4 +1,4 @@
-package sessionIDParser
+package sessionidparser
 
 import (
 	"bytes"
