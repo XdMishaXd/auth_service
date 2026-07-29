@@ -4,6 +4,10 @@ run:
   timeout: 5m
   tests: true
 
+exclusions:
+  paths:
+    - docs
+
 linters:
   default: none
 
@@ -58,8 +62,6 @@ linters:
         - name: import-alias-naming
           disabled: true
         - name: exported
-          disabled: true
-        - name: exported
           severity: warning
         - name: error-return
           severity: error
@@ -88,10 +90,6 @@ linters:
       excludes:
         - G104
 
-  exclusions:
-    paths:
-      - docs
-
     rules:
       # Тестовые файлы
       - path: _test\.go
@@ -107,18 +105,7 @@ linters:
         text: "unused-parameter"
 
       # QF1008
-      - path: internal/storage/postgres/
-        linters:
-          - staticcheck
-        text: "QF1008"
-
-      - path: cmd/main.go
-        linters:
-          - staticcheck
-        text: "QF1008"
-
-      - path: internal/auth/2fa/
-        linters:
+      - linters:
           - staticcheck
         text: "QF1008"
 

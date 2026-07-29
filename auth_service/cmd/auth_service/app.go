@@ -46,9 +46,9 @@ func buildApp(ctx context.Context, cfg *config.Config, log *slog.Logger) (*App, 
 		return nil, cleanup, fmt.Errorf("postgres init: %w", err)
 	}
 	closers = append(closers, postgresql)
-	log.Info("postgresql connected", //nolint:staticcheck // QF1008: селектор через встроенное поле оставлен явно для читаемости
+	log.Info("postgresql connected",
 		slog.String("host", cfg.Postgres.Host),
-		slog.Int("port", cfg.Postgres.Port), //nolint:staticcheck // QF1008: селектор через встроенное поле оставлен явно для читаемости
+		slog.Int("port", cfg.Postgres.Port),
 	)
 
 	rdb, err := redisClient.New(ctx, cfg.Redis.Addr, cfg.Redis.Password, cfg.Redis.Db)

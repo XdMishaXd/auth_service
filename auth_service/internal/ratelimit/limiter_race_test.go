@@ -2,13 +2,13 @@ package ratelimit
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
 	redisstorage "auth_service/internal/storage/redis"
 
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
+	"golang.org/x/sync/errgroup"
 )
 
 // setupTestLimiter поднимает реальный Redis в контейнере и возвращает
@@ -74,30 +74,25 @@ func TestLimiter_Allow_ConcurrentBurstRespected(t *testing.T) {
 	const goroutines = 20
 	key := "test:burst:concurrent"
 
-	var wg sync.WaitGroup
+	var eg errgroup.Group
 	results := make(chan Decision, goroutines)
-	errs := make(chan error, goroutines)
 
 	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		eg.Go(func() error {
 			decision, err := limiter.Allow(ctx, key, policy)
 			if err != nil {
-				errs <- err
-				return
+				return err
 			}
 			results <- decision
-		}()
+			return nil
+		})
 	}
 
-	wg.Wait()
+	if err := eg.Wait(); err != nil {
+		close(results)
+		t.Fatalf("неожиданная ошибка Allow: %v", err)
+	}
 	close(results)
-	close(errs)
-
-	for err := range errs {
-		t.Errorf("неожиданная ошибка Allow: %v", err)
-	}
 
 	var allowed, denied int
 	for d := range results {
@@ -142,7 +137,7 @@ func TestLimiter_Allow_DifferentKeysIndependent(t *testing.T) {
 		t.Fatalf("Allow key:a (3-я попытка): %v", err)
 	}
 	if d.Allowed {
-		t.Fatalf("key:a должен быть исчерпан после burst, но получил Allowed=true")
+		t.Fatal("key:a должен быть исчерпан после burst, но получил Allowed=true")
 	}
 
 	// key:b — независимый лимит, должен быть свежим
@@ -151,7 +146,7 @@ func TestLimiter_Allow_DifferentKeysIndependent(t *testing.T) {
 		t.Fatalf("Allow key:b: %v", err)
 	}
 	if !d.Allowed {
-		t.Fatalf("key:b должен быть независим от key:a, но получил Allowed=false")
+		t.Fatal("key:b должен быть независим от key:a, но получил Allowed=false")
 	}
 }
 
@@ -173,7 +168,7 @@ func TestLimiter_Allow_RetryAfterPositiveWhenDenied(t *testing.T) {
 		t.Fatalf("второй Allow: %v", err)
 	}
 	if d.Allowed {
-		t.Fatalf("ожидал отказ на второй попытке при burst=1")
+		t.Fatal("ожидал отказ на второй попытке при burst=1")
 	}
 	if d.RetryAfter <= 0 {
 		t.Fatalf("ожидал RetryAfter > 0 при отказе, получил %v", d.RetryAfter)

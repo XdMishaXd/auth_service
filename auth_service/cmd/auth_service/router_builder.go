@@ -24,13 +24,43 @@ func buildRouter(
 	pg *postgres.Repo, rdb *redisClient.Repo,
 	mq *rabbitmq.RabbitMQClient, limiter *rateLimit.Limiter,
 ) *router.Router {
-	googleProvider := providers.NewGoogleProvider(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
-	githubProvider := providers.NewGitHubProvider(cfg.GitHubClientID, cfg.GitHubClientSecret, cfg.GitHubRedirectURL)
+	googleProvider := providers.NewGoogleProvider(
+		cfg.GoogleClientID,
+		cfg.GoogleClientSecret,
+		cfg.GoogleRedirectURL,
+	)
+	githubProvider := providers.NewGitHubProvider(
+		cfg.GitHubClientID,
+		cfg.GitHubClientSecret,
+		cfg.GitHubRedirectURL,
+	)
 	oauthProviders := map[string]oauth.Provider{"google": googleProvider, "github": githubProvider}
 
-	twoFactorAuthService := twoFactorAuth.New(pg, rdb, mq, log, cfg)
-	authService := auth.New(log, pg, pg, pg, twoFactorAuthService, cfg.AccessTokenTTL, cfg.RefreshTokenTTL, cfg.ResetTokenTTL)
-	oauthService := oauth.New(authService, log, pg, rdb, oauthProviders, cfg.StateTTL)
+	twoFactorAuthService := twoFactorAuth.New(
+		pg,
+		rdb,
+		mq,
+		log,
+		cfg,
+	)
+	authService := auth.New(
+		log,
+		pg,
+		pg,
+		pg,
+		twoFactorAuthService,
+		cfg.AccessTokenTTL,
+		cfg.RefreshTokenTTL,
+		cfg.ResetTokenTTL,
+	)
+	oauthService := oauth.New(
+		authService,
+		log,
+		pg,
+		rdb,
+		oauthProviders,
+		cfg.StateTTL,
+	)
 
 	return router.New(router.Deps{
 		Log:                  log,

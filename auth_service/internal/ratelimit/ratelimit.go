@@ -20,6 +20,7 @@ var (
 	ErrRedisRepoIsNil   = errors.New("ratelimiter: redis repo is nil")
 )
 
+// Redis интерфейс для работы с redis
 type Redis interface {
 	RegisterAtomicOp(ctx context.Context) (string, error)
 	ExecuteAtomicOp(ctx context.Context, opID string, keys []string, args ...any) (any, error)
@@ -91,13 +92,13 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 		return Decision{}, err
 	}
 
-	now := time.Now().UnixMilli()
+	nowMs := time.Now().UnixMilli()
 
 	res, err := l.redis.ExecuteAtomicOp(ctx, l.opID, []string{key},
 		policy.Burst,
 		policy.ratePerSecond(),
 		1,
-		now,
+		nowMs,
 	)
 	if err != nil {
 		if isNoScript(err) {
@@ -111,7 +112,7 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 				policy.Burst,
 				policy.ratePerSecond(),
 				1,
-				now,
+				nowMs,
 			)
 		}
 
@@ -163,6 +164,7 @@ func toInt64(v any) (int64, error) {
 	}
 }
 
+// BuildKey генерирует hex ключ
 func BuildKey(endpoint, keyType, identifier string) string {
 	h := sha256.Sum256([]byte(identifier))
 	return fmt.Sprintf("ratelimit:%s:%s:%s", endpoint, keyType, hex.EncodeToString(h[:8]))

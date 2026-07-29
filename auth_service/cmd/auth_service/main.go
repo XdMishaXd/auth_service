@@ -19,7 +19,7 @@ func main() {
 	cfg := config.MustLoad("./config/config.yaml")
 
 	log := logger.MustSetup(cfg.Env)
-	log.Info("starting auth service", slog.String("env", cfg.Env))
+	log.Info("starting auth service")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
