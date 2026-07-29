@@ -18,7 +18,7 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 	AccessToken  string `json:"access_token" example:"fkajeDJ1p3FJ..."`
 	RefreshToken string `json:"refresh_token" example:"abcDEF123..."`
@@ -47,13 +47,12 @@ type Response struct {
 func New(
 	log *slog.Logger,
 	authMiddleware *oauth.OAuthService,
-	allowedHosts map[string]bool,
 	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.callback.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
@@ -61,7 +60,11 @@ func New(
 		providerName := chi.URLParam(r, "provider")
 
 		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			log.Warn("oauth provider returned error", slog.String("provider_error", errParam))
+			reqLog.Warn("oauth provider returned error",
+				slog.String("provider", providerName),
+				slog.String("provider_error", errParam),
+			)
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("access denied by user"))
 			return
@@ -71,6 +74,8 @@ func New(
 		state := r.URL.Query().Get("state")
 
 		if code == "" || state == "" {
+			reqLog.Warn("missing code or state from query", slog.String("provider", providerName))
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("code and state are required"))
 			return
@@ -82,22 +87,35 @@ func New(
 		accessToken, refreshToken, err := authMiddleware.Callback(ctx, providerName, code, state)
 		if err != nil {
 			status, msg := mapOAuthCallbackError(err)
-			if status == http.StatusInternalServerError {
-				log.Error("oauth callback failed", sl.Err(err))
+			switch status {
+			case http.StatusInternalServerError:
+				reqLog.Error("oauth callback failed", sl.Err(err))
+			case http.StatusConflict:
+				// потенциальная попытка захвата чужого аккаунта через OAuth — стоит видеть отдельно
+				reqLog.Warn("oauth account conflict",
+					slog.String("provider", providerName),
+					sl.Err(err),
+				)
+			default:
+				reqLog.Warn("oauth callback rejected",
+					slog.String("provider", providerName),
+					sl.Err(err),
+				)
 			}
 
 			render.Status(r, status)
 			render.JSON(w, r, resp.Error(msg))
-
 			return
 		}
 
-		ResponseOK(w, r, accessToken, refreshToken)
+		reqLog.Info("oauth callback succeeded", slog.String("provider", providerName))
+
+		responseOK(w, r, accessToken, refreshToken)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, response{
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

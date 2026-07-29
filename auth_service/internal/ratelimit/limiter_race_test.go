@@ -1,4 +1,4 @@
-package rateLimit
+package ratelimit
 
 import (
 	"context"

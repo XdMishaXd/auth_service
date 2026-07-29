@@ -15,7 +15,7 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
@@ -66,14 +66,14 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.verify.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		token := r.URL.Query().Get("token")
 		if token == "" {
-			log.Warn("missing verification token")
+			reqLog.Warn("missing verification token")
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("missing token"))
@@ -83,7 +83,7 @@ func New(
 
 		userID, err := verification.ParseVerificationToken(token, tokenSecret)
 		if err != nil {
-			log.Warn("invalid verification token", sl.Err(err))
+			reqLog.Warn("invalid verification token", sl.Err(err))
 
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired token"))
@@ -95,7 +95,7 @@ func New(
 		defer cancel()
 
 		if err := authMiddleware.VerifyUser(ctx, token, tokenSecret); err != nil {
-			log.Error("failed to mark user as verified", sl.Err(err))
+			reqLog.Error("failed to mark user as verified", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
@@ -103,14 +103,14 @@ func New(
 			return
 		}
 
-		log.Info("email verified successfully", slog.Int64("uid", userID))
+		reqLog.Info("email verified successfully", slog.Int64("uid", userID))
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
 }

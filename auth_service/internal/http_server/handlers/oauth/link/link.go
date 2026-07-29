@@ -20,7 +20,7 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 	RedirectURL string `json:"redirect_url" example:"https://www.google.com/"`
 }
@@ -52,16 +52,17 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.link.New"
 
-		log := log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		claims, ok := claimsParser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
-
 			return
 		}
 
@@ -69,6 +70,11 @@ func New(
 
 		redirectURI, err := oauthutil.ValidateRedirectURI(r.URL.Query().Get("redirect_uri"), allowedHosts)
 		if err != nil {
+			reqLog.Warn("redirect_uri rejected",
+				slog.Int64("user_id", claims.UserID),
+				slog.String("raw", r.URL.Query().Get("redirect_uri")),
+			)
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error(err.Error()))
 			return
@@ -80,22 +86,28 @@ func New(
 		authURL, err := authService.StartLogin(ctx, providerName, claims.AppID, redirectURI, claims.UserID)
 		if err != nil {
 			status, msg := mapStartLoginError(err)
-			if status == http.StatusInternalServerError {
-				log.Error("failed to start oauth link flow", sl.Err(err))
+			switch status {
+			case http.StatusInternalServerError:
+				reqLog.Error("failed to start oauth link flow", sl.Err(err))
+			default:
+				reqLog.Warn("oauth link rejected",
+					slog.Int64("user_id", claims.UserID),
+					slog.String("provider", providerName),
+					sl.Err(err),
+				)
 			}
 
 			render.Status(r, status)
 			render.JSON(w, r, resp.Error(msg))
-
 			return
 		}
 
-		ResponseOK(w, r, authURL)
+		responseOK(w, r, authURL)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, redirectURL string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, redirectURL string) {
+	render.JSON(w, r, response{
 		Response:    resp.OK(),
 		RedirectURL: redirectURL,
 	})

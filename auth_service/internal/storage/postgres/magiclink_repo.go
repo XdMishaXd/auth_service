@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// * SaveMagicLink сохраняет magic link
-func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink) error {
+// SaveMagicLink сохраняет magic link
+func (r *Repo) SaveMagicLink(ctx context.Context, link *models.MagicLink) error {
 	const op = "storage.postgres.SaveMagicLink"
 
 	query := `
@@ -42,8 +42,8 @@ func (r *PostgresRepo) SaveMagicLink(ctx context.Context, link *models.MagicLink
 	return nil
 }
 
-// * ConsumeMagicLink атомарно проверяет и инвалидирует magic link по хешу токена.
-func (r *PostgresRepo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (*models.MagicLink, error) {
+// ConsumeMagicLink атомарно проверяет и инвалидирует magic link по хешу токена.
+func (r *Repo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (*models.MagicLink, error) {
 	const op = "storage.postgres.ConsumeMagicLink"
 
 	query := `
@@ -72,8 +72,8 @@ func (r *PostgresRepo) ConsumeMagicLink(ctx context.Context, tokenHash []byte) (
 	return link, nil
 }
 
-// * InvalidateMagicLinksByUserID инвалидирует все активные magic links пользователя
-func (r *PostgresRepo) InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error) {
+// InvalidateMagicLinksByUserID инвалидирует все активные magic links пользователя
+func (r *Repo) InvalidateMagicLinksByUserID(ctx context.Context, userID int64) (int64, error) {
 	const op = "storage.postgres.InvalidateMagicLinksByUserID"
 
 	query := `
@@ -90,8 +90,8 @@ func (r *PostgresRepo) InvalidateMagicLinksByUserID(ctx context.Context, userID 
 	return result.RowsAffected(), nil
 }
 
-// * EnableMagicLink2FA включает magic-link 2FA пользователю.
-func (r *PostgresRepo) EnableMagicLink2FA(ctx context.Context, userID int64) error {
+// EnableMagicLink2FA включает magic-link 2FA пользователю.
+func (r *Repo) EnableMagicLink2FA(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.EnableMagicLink2FA"
 
 	query := `
@@ -114,8 +114,8 @@ func (r *PostgresRepo) EnableMagicLink2FA(ctx context.Context, userID int64) err
 	return nil
 }
 
-// * DisableMagicLink2FA отключает 2FA пользователю.
-func (r *PostgresRepo) DisableMagicLink2FA(ctx context.Context, userID int64) error {
+// DisableMagicLink2FA отключает 2FA пользователю.
+func (r *Repo) DisableMagicLink2FA(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.DisableMagicLink2FA"
 
 	query := `
@@ -138,7 +138,8 @@ func (r *PostgresRepo) DisableMagicLink2FA(ctx context.Context, userID int64) er
 	return nil
 }
 
-func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error) {
+// TwoFAStatus возвращает статус 2fa пользователя по его id
+func (r *Repo) TwoFAStatus(ctx context.Context, userID int64) (*models.TwoFAStatus, error) {
 	const op = "storage.postgres.TwoFAStatus"
 
 	query := `
@@ -161,8 +162,8 @@ func (r *PostgresRepo) TwoFAStatus(ctx context.Context, userID int64) (*models.T
 	return status, nil
 }
 
-// * CleanupExpiredMagicLinks вызывает функцию БД для очистки истекших ссылок
-func (r *PostgresRepo) CleanupExpiredMagicLinks(ctx context.Context) (int, error) {
+// CleanupExpiredMagicLinks вызывает функцию БД для очистки истекших ссылок.
+func (r *Repo) CleanupExpiredMagicLinks(ctx context.Context) (int, error) {
 	const op = "storage.postgres.CleanupExpiredMagicLinks"
 
 	query := `SELECT cleanup_expired_magic_links()`

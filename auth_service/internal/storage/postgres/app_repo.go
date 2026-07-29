@@ -11,7 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *PostgresRepo) App(ctx context.Context, appID int32) (*models.App, error) {
+// App возвращает приложение по его идентификатору.
+func (r *Repo) App(ctx context.Context, appID int32) (*models.App, error) {
 	const op = "storage.postgres.App"
 
 	query := `
@@ -34,7 +35,8 @@ func (r *PostgresRepo) App(ctx context.Context, appID int32) (*models.App, error
 	return &a, nil
 }
 
-func (r *PostgresRepo) AppSecret(ctx context.Context, appID int32) (string, error) {
+// AppSecret возвращает секрет приложения по его идентификатору
+func (r *Repo) AppSecret(ctx context.Context, appID int32) (string, error) {
 	const op = "storage.postgres.AppSecret"
 
 	query := `SELECT secret FROM apps WHERE id = $1`

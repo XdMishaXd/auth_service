@@ -8,11 +8,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type RedisRepo struct {
+type Repo struct {
 	client *redis.Client
 }
 
-func New(ctx context.Context, addr, pass string, db int) (*RedisRepo, error) {
+func New(ctx context.Context, addr, pass string, db int) (*Repo, error) {
 	const op = "storage.redis.New"
 
 	client := redis.NewClient(
@@ -32,13 +32,13 @@ func New(ctx context.Context, addr, pass string, db int) (*RedisRepo, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return &RedisRepo{
+	return &Repo{
 		client: client,
 	}, nil
 }
 
 // Close закрывает соединение с Redis.
-func (r *RedisRepo) Close(ctx context.Context) error {
+func (r *Repo) Close(ctx context.Context) error {
 	const op = "storage.redis.Close"
 
 	done := make(chan error, 1)

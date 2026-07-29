@@ -18,10 +18,6 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
-	resp.Response
-}
-
 // New godoc
 // @Summary      Отвязка OAuth-провайдера от аккаунта
 // @Description  Удаляет связь между указанным OAuth-провайдером и аккаунтом
@@ -46,15 +42,18 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.unlink.New"
 
-		log := log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		claims, ok := claimsparser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
+
 			return
 		}
 
@@ -63,19 +62,31 @@ func New(
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
-		err := authService.Unlink(ctx, claims.UserID, providerName)
-		if err != nil {
+		if err := authService.Unlink(ctx, claims.UserID, providerName); err != nil {
 			status, msg := mapUnlinkError(err)
-			if status == http.StatusInternalServerError {
-				log.Error("failed to unlink oauth account", sl.Err(err))
+			switch status {
+			case http.StatusInternalServerError:
+				reqLog.Error("failed to unlink oauth account", sl.Err(err))
+			default:
+				reqLog.Warn("unlink rejected",
+					slog.Int64("user_id", claims.UserID),
+					slog.String("provider", providerName),
+					sl.Err(err),
+				)
 			}
+
 			render.Status(r, status)
 			render.JSON(w, r, resp.Error(msg))
+
 			return
 		}
 
-		render.Status(r, http.StatusNoContent)
-		ResponseOK(w, r)
+		reqLog.Info("oauth account unlinked",
+			slog.Int64("user_id", claims.UserID),
+			slog.String("provider", providerName),
+		)
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -88,10 +99,4 @@ func mapUnlinkError(err error) (statusCode int, errForReturn string) {
 	default:
 		return http.StatusInternalServerError, "internal server error"
 	}
-}
-
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
-		Response: resp.OK(),
-	})
 }

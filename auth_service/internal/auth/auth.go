@@ -700,13 +700,13 @@ func (a *Auth) RestoreAccount(
 		if sessionID == "" || rawToken == "" {
 			return "", "", ErrRestoreConfirmation
 		}
-		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, user.ID, models.ActionRestoreAccount); err != nil {
+		if err = a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, user.ID, models.ActionRestoreAccount); err != nil {
 			log.Warn("restore account: invalid magic link confirmation", sl.Err(err))
 			return "", "", ErrRestoreConfirmation
 		}
 	}
 
-	if err := a.UsrSaver.RestoreAccount(ctx, user.ID); err != nil {
+	if err = a.UsrSaver.RestoreAccount(ctx, user.ID); err != nil {
 		switch {
 		case errors.Is(err, storage.ErrNothingToRestore):
 			return "", "", storage.ErrNothingToRestore

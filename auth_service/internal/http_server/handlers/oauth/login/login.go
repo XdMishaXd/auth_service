@@ -1,4 +1,4 @@
-package ologin
+package oauthlogin
 
 import (
 	"errors"
@@ -8,6 +8,7 @@ import (
 
 	"auth_service/internal/auth/oauth"
 	resp "auth_service/internal/lib/api/response"
+	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/lib/validation/oauthutil"
 
 	"github.com/go-chi/chi/v5"
@@ -40,7 +41,7 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.login.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
@@ -50,6 +51,8 @@ func New(
 		appIDStr := r.URL.Query().Get("app_id")
 		appID64, err := strconv.ParseInt(appIDStr, 10, 32)
 		if err != nil {
+			reqLog.Warn("invalid app_id", slog.String("raw", appIDStr))
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("invalid app_id"))
 			return
@@ -57,7 +60,7 @@ func New(
 
 		redirectURI, err := oauthutil.ValidateRedirectURI(r.URL.Query().Get("redirect_uri"), allowedHosts)
 		if err != nil {
-			log.Warn("redirect_uri rejected",
+			reqLog.Warn("redirect_uri rejected",
 				slog.String("raw", r.URL.Query().Get("redirect_uri")),
 				slog.Any("allowed_hosts", allowedHosts),
 			)
@@ -72,8 +75,10 @@ func New(
 		if err != nil {
 			switch {
 			case errors.Is(err, oauth.ErrOAuthProviderNotFound):
+				reqLog.Warn("oauth provider not found", slog.String("provider", providerName))
 				render.Status(r, http.StatusNotFound)
 			default:
+				reqLog.Error("failed to start oauth login", sl.Err(err))
 				render.Status(r, http.StatusInternalServerError)
 			}
 
@@ -81,6 +86,11 @@ func New(
 
 			return
 		}
+
+		reqLog.Info("oauth login started",
+			slog.String("provider", providerName),
+			slog.Int64("app_id", appID64),
+		)
 
 		// authURL строится из статического provider config
 		http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // G710: authURL is server-built, not user-controlled

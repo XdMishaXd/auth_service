@@ -16,11 +16,11 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
-	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format" example:"fkajeDJ1p3FJ..."`
+type request struct {
+	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format" example:"fkajeDJ1p3FJ..."` //nolint:revive // custom validator
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	AccessToken  string `json:"access_token" example:"abcDEF123..."`
 	RefreshToken string `json:"refresh_token" example:"fkajeDJ1p3FJ..."`
@@ -81,24 +81,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.refresh.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -110,7 +108,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -129,7 +127,7 @@ func New(
 				return
 			}
 
-			log.Error("failed to refresh tokens", sl.Err(err))
+			reqLog.Error("failed to refresh tokens", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -137,14 +135,14 @@ func New(
 			return
 		}
 
-		log.Info("Tokens refreshed successfully")
+		reqLog.Info("Tokens refreshed successfully")
 
-		ResponseOK(w, r, accessToken, newRefreshToken)
+		responseOK(w, r, accessToken, newRefreshToken)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, response{
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

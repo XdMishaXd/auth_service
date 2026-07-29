@@ -11,12 +11,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type PostgresRepo struct {
+// PostgresRepo предоставляет доступ к данным PostgreSQL.
+type Repo struct {
 	pool *pgxpool.Pool
 	log  *slog.Logger
 }
 
-func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*PostgresRepo, error) {
+// New создаёт репозиторий PostgreSQL и проверяет соединение с базой данных.
+func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Repo, error) {
 	const op = "storage.postgres.New"
 
 	dsn := dsn(cfg)
@@ -41,10 +43,13 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger) (*PostgresRe
 		return nil, fmt.Errorf("%s: failed to ping database: %w", op, err)
 	}
 
-	return &PostgresRepo{pool: pool, log: log}, nil
+	return &Repo{pool: pool, log: log}, nil
 }
 
-func (r *PostgresRepo) Close(ctx context.Context) error {
+// Close закрывает пул соединений с базой данных.
+func (r *Repo) Close(ctx context.Context) error {
+	const op = "storage.postgres.Close"
+
 	done := make(chan struct{})
 
 	go func() {
@@ -57,11 +62,11 @@ func (r *PostgresRepo) Close(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		r.log.Error("postgres pool close timed out, connections may leak")
-		return ctx.Err()
+		return fmt.Errorf("%s: %w", op, ctx.Err())
 	}
 }
 
-// * dsn формирует конфигурацию базы данных.
+// dsn формирует строку подключения к базе данных.
 func dsn(cfg *config.Config) string {
 	return fmt.Sprintf("host=%s port=%d user=%s password=%s database=%s sslmode=%s",
 		cfg.Postgres.Host,

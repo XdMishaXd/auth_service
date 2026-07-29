@@ -1,4 +1,4 @@
-package rateLimit
+package ratelimit
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 var (
 	ErrRedisUnavailable = errors.New("ratelimiter: redis unavailable")
 	ErrLimitExeeded     = errors.New("limit exeeded")
+	ErrRedisRepoIsNil   = errors.New("ratelimiter: redis repo is nil")
 )
 
 type Redis interface {
@@ -44,7 +45,7 @@ type Decision struct {
 // Один экземпляр переиспользуется на весь процесс (операция регистрируется
 // один раз в New, повторная регистрация происходит лениво при NOSCRIPT).
 type Limiter struct {
-	redis *redis.RedisRepo
+	redis *redis.Repo
 	opID  string
 }
 
@@ -71,9 +72,9 @@ func (p Policy) Validate() error {
 // New создаёт Limiter и сразу регистрирует атомарную операцию (GCRA).
 // Требует живого redis на старте — сервис должен упасть при старте,
 // если Redis недоступен, а не молча деградировать позже без объяснимой причины.
-func New(ctx context.Context, r *redis.RedisRepo) (*Limiter, error) {
+func New(ctx context.Context, r *redis.Repo) (*Limiter, error) {
 	if r == nil {
-		return nil, fmt.Errorf("ratelimiter: redis repo is nil")
+		return nil, ErrRedisRepoIsNil
 	}
 
 	opID, err := r.RegisterAtomicOp(ctx)

@@ -1,4 +1,4 @@
-package verifyMagicLink
+package verifymagiclink
 
 import (
 	"context"
@@ -18,12 +18,12 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	SessionID string `json:"session_id" validate:"required" example:"abcDEF123..."`
 	Token     string `json:"token" validate:"required" example:"fkajeDJ1p3FJ..."`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	AccessToken  string `json:"access_token" example:"asffhr3FJ..."`
 	RefreshToken string `json:"refresh_token" example:"dgsadfgDJ1p3FJ..."`
@@ -53,15 +53,15 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.twofa.verifylink.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
-			log.Error("failed to decode request body", sl.Err(err))
+			reqLog.Error("failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
@@ -79,8 +79,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
-
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -95,7 +94,7 @@ func New(
 			switch {
 			case errors.Is(err, twoFactorAuth.ErrMagicLinkVerificationFailed),
 				errors.Is(err, storage.ErrPendingSessionNotFound):
-				log.Warn("magic link verification failed", sl.Err(err))
+				reqLog.Warn("magic link verification failed", sl.Err(err))
 
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("invalid or expired confirmation"))
@@ -103,7 +102,7 @@ func New(
 				return
 			}
 
-			log.Error("magic link verification: internal error", sl.Err(err))
+			reqLog.Error("magic link verification: internal error", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -111,16 +110,14 @@ func New(
 			return
 		}
 
-		log.Info("2fa verified, tokens issued")
+		reqLog.Info("2fa verified, tokens issued")
 
-		// ? redirect
-
-		ResponseOK(w, r, accessToken, refreshToken)
+		responseOK(w, r, accessToken, refreshToken)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, response{
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

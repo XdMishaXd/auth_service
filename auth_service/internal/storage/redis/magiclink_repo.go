@@ -11,7 +11,7 @@ import (
 
 // SetPendingSession создаёт pending-сессию логина после успешной проверки
 // пароля/oauth, до подтверждения второго фактора.
-func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, session models.PendingSession, ttl time.Duration) error {
+func (r *Repo) SetPendingSession(ctx context.Context, sessionID string, session models.PendingSession, ttl time.Duration) error {
 	const op = "storage.redis.SetPendingSession"
 
 	key := pendingSessionKey(sessionID)
@@ -36,7 +36,7 @@ func (r *RedisRepo) SetPendingSession(ctx context.Context, sessionID string, ses
 
 // GetPendingSession читает pending-сессию. Не удаляет её — используется для
 // сверки session_id при выпуске нового magic-link (resend) без завершения флоу.
-func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*models.PendingSession, error) {
+func (r *Repo) GetPendingSession(ctx context.Context, sessionID string) (*models.PendingSession, error) {
 	const op = "storage.redis.GetPendingSession"
 
 	key := pendingSessionKey(sessionID)
@@ -69,7 +69,7 @@ func (r *RedisRepo) GetPendingSession(ctx context.Context, sessionID string) (*m
 // DeletePendingSession завершает pending-сессию — вызывается один раз, сразу
 // после успешного ConsumeMagicLink в Postgres, чтобы тот же session_id нельзя
 // было переиспользовать повторно даже в рамках оставшегося TTL.
-func (r *RedisRepo) DeletePendingSession(ctx context.Context, sessionID string) error {
+func (r *Repo) DeletePendingSession(ctx context.Context, sessionID string) error {
 	const op = "storage.redis.DeletePendingSession"
 
 	if err := r.client.Del(ctx, pendingSessionKey(sessionID)).Err(); err != nil {

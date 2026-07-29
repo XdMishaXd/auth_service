@@ -22,7 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 	-ldflags='-w -s -extldflags "-static"' \
 	-trimpath \
 	-o auth_service \
-	./cmd
+	./cmd/auth_service
 
 RUN git clone --depth 1 --branch v3.27.3 https://github.com/pressly/goose /tmp/goose && \
 	cd /tmp/goose && \

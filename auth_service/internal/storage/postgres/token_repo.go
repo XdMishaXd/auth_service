@@ -14,7 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (r *PostgresRepo) SaveRefreshToken(
+// SaveRefreshToken сохраняет refresh-токен в базе данных.
+func (r *Repo) SaveRefreshToken(
 	ctx context.Context,
 	id string,
 	userID int64,
@@ -43,7 +44,8 @@ func (r *PostgresRepo) SaveRefreshToken(
 	return nil
 }
 
-func (r *PostgresRepo) UpdateRefreshToken(
+// UpdateRefreshToken атомарно заменяет хеш refresh-токена и срок его действия.
+func (r *Repo) UpdateRefreshToken(
 	ctx context.Context,
 	id uuid.UUID,
 	newTokenHash []byte,
@@ -75,7 +77,8 @@ func (r *PostgresRepo) UpdateRefreshToken(
 	return nil
 }
 
-func (r *PostgresRepo) RefreshTokenByID(
+// RefreshTokenByID возвращает refresh-токен по его идентификатору.
+func (r *Repo) RefreshTokenByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (*models.RefreshToken, error) {
@@ -107,7 +110,8 @@ func (r *PostgresRepo) RefreshTokenByID(
 	return &rt, nil
 }
 
-func (r *PostgresRepo) DeleteRefreshToken(
+// DeleteRefreshToken удаляет refresh-токен по его идентификатору.
+func (r *Repo) DeleteRefreshToken(
 	ctx context.Context,
 	id uuid.UUID,
 ) error {
@@ -126,14 +130,15 @@ func (r *PostgresRepo) DeleteRefreshToken(
 	return nil
 }
 
-func (r *PostgresRepo) SaveResetToken(
+// SaveResetToken сохраняет токен для восстановления пароля.
+func (r *Repo) SaveResetToken(
 	ctx context.Context,
 	tokenID uuid.UUID,
 	userID int64,
 	tokenHash []byte,
 	expiresAt time.Time,
 ) error {
-	const op = "storage.postgres.App"
+	const op = "storage.postgres.SaveResetToken"
 
 	query := `
 		INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
@@ -153,7 +158,8 @@ func (r *PostgresRepo) SaveResetToken(
 	return nil
 }
 
-func (r *PostgresRepo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.ResetToken, error) {
+// ResetTokenByID возвращает токен восстановления пароля по его идентификатору.
+func (r *Repo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.ResetToken, error) {
 	query := `
 		SELECT id, user_id, token_hash, expires_at, used_at
 		FROM password_reset_tokens
@@ -179,13 +185,14 @@ func (r *PostgresRepo) ResetTokenByID(ctx context.Context, tokenID uuid.UUID) (*
 	return &rt, nil
 }
 
-func (r *PostgresRepo) DeleteAllResetTokens(ctx context.Context, uid int64) error {
-	const op = "postgres.DeleteAllResetTokens"
+// DeleteAllResetTokens удаляет все токены восстановления пароля пользователя.
+func (r *Repo) DeleteAllResetTokens(ctx context.Context, uid int64) error {
+	const op = "storage.postgres.DeleteAllResetTokens"
 
 	query := `
 		DELETE
 		FROM password_reset_tokens
-		WHERE user_id = $1
+		WHERE user_id = $
 	`
 	_, err := r.pool.Exec(ctx, query, uid)
 	if err != nil {
@@ -195,7 +202,8 @@ func (r *PostgresRepo) DeleteAllResetTokens(ctx context.Context, uid int64) erro
 	return nil
 }
 
-func (r *PostgresRepo) ResetPassword(
+// ResetPassword атомарно изменяет пароль и инвалидирует связанные с ним токены.
+func (r *Repo) ResetPassword(
 	ctx context.Context,
 	userID int64,
 	tokenID uuid.UUID,

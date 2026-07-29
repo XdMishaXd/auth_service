@@ -14,7 +14,7 @@ import (
 )
 
 // seedResetToken вставляет активный reset-токен для существующего пользователя.
-func seedResetToken(t *testing.T, ctx context.Context, repo *PostgresRepo, userID int64) uuid.UUID {
+func seedResetToken(t *testing.T, ctx context.Context, repo *Repo, userID int64) uuid.UUID {
 	t.Helper()
 
 	tokenID, err := uuid.NewV7()

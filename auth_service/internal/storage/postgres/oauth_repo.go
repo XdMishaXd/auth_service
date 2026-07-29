@@ -13,8 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// * SaveOAuthAccount связывает существующего user_id с provider-аккаунтом.
-func (r *PostgresRepo) SaveOAuthAccount(
+// SaveOAuthAccount связывает существующего user_id с provider-аккаунтом.
+func (r *Repo) SaveOAuthAccount(
 	ctx context.Context,
 	userID int64,
 	provider string,
@@ -47,8 +47,8 @@ func (r *PostgresRepo) SaveOAuthAccount(
 	return nil
 }
 
-// * OAuthAccountByProviderUserID — основной lookup при login через OAuth.
-func (r *PostgresRepo) OAuthAccountByProviderUserID(
+// OAuthAccountByProviderUserID — основной lookup при login через OAuth.
+func (r *Repo) OAuthAccountByProviderUserID(
 	ctx context.Context,
 	provider string,
 	providerUserID string,
@@ -76,8 +76,8 @@ func (r *PostgresRepo) OAuthAccountByProviderUserID(
 	return &a, nil
 }
 
-// * OAuthAccountsByUserID — список привязанных провайдеров, для профиля/настроек.
-func (r *PostgresRepo) OAuthAccountsByUserID(ctx context.Context, userID int64) ([]*models.OAuthAccount, error) {
+// OAuthAccountsByUserID — список привязанных провайдеров, для профиля/настроек.
+func (r *Repo) OAuthAccountsByUserID(ctx context.Context, userID int64) ([]*models.OAuthAccount, error) {
 	const op = "storage.postgres.OAuthAccountsByUserID"
 
 	query := `
@@ -103,8 +103,8 @@ func (r *PostgresRepo) OAuthAccountsByUserID(ctx context.Context, userID int64) 
 	return accounts, nil
 }
 
-// * HasOAuthAccounts проверяет, есть ли у пользователя хотя бы один привязанный oauth-аккаунт.
-func (r *PostgresRepo) HasOAuthAccounts(ctx context.Context, userID int64) (bool, error) {
+// HasOAuthAccounts проверяет, есть ли у пользователя хотя бы один привязанный oauth-аккаунт.
+func (r *Repo) HasOAuthAccounts(ctx context.Context, userID int64) (bool, error) {
 	const op = "storage.postgres.HasOAuthAccounts"
 
 	var exists bool
@@ -118,8 +118,8 @@ func (r *PostgresRepo) HasOAuthAccounts(ctx context.Context, userID int64) (bool
 	return exists, nil
 }
 
-// * UnlinkOAuthAccount отвязывает provider от юзера.
-func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, provider string) error {
+// UnlinkOAuthAccount отвязывает provider от юзера.
+func (r *Repo) UnlinkOAuthAccount(ctx context.Context, userID int64, provider string) error {
 	const op = "storage.postgres.UnlinkOAuthAccount"
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -184,8 +184,8 @@ func (r *PostgresRepo) UnlinkOAuthAccount(ctx context.Context, userID int64, pro
 	return nil
 }
 
-// * SaveOAuthUser регистрирует юзера, у которого ещё нет аккаунта, через OAuth.
-func (r *PostgresRepo) SaveOAuthUser(
+// SaveOAuthUser регистрирует юзера, у которого ещё нет аккаунта, через OAuth.
+func (r *Repo) SaveOAuthUser(
 	ctx context.Context,
 	email, username string,
 	provider string,
