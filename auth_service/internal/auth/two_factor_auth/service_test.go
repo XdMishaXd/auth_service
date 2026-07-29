@@ -1,4 +1,4 @@
-package twoFactorAuth
+package twofactorauth
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package twoFactorAuth
+package twofactorauth
 
 import (
 	"context"
@@ -121,7 +121,7 @@ func (s *TwoFactorAuthentificator) VerifyLogin(
 	link, err := s.verifyToken(ctx, sessionID, rawToken, models.ActionLogin2FA)
 	if err != nil {
 		if errors.Is(err, ErrMagicLinkVerificationFailed) || errors.Is(err, storage.ErrMagicLinkNotFound) {
-			return 0, 0, err
+			return 0, 0, fmt.Errorf("%s: %w", op, err)
 		}
 
 		return 0, 0, fmt.Errorf("%s: %w", op, err)
@@ -192,14 +192,16 @@ func (s *TwoFactorAuthentificator) CleanupExpired(ctx context.Context) (int, err
 }
 
 func generateSelectorVerifier() (selector, verifier string, err error) {
+	const op = "auth.twoFactorAuth.generateSelectorVerifier"
+
 	selBytes := make([]byte, 16)
 	if _, err = rand.Read(selBytes); err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	verBytes := make([]byte, 32)
 	if _, err = rand.Read(verBytes); err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return base64.RawURLEncoding.EncodeToString(selBytes),

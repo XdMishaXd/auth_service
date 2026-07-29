@@ -6,7 +6,7 @@ import (
 	"auth_service/internal/auth"
 	"auth_service/internal/auth/oauth"
 	"auth_service/internal/auth/oauth/providers"
-	"auth_service/internal/auth/twoFactorAuth"
+	twofactorauth "auth_service/internal/auth/two_factor_auth"
 	"auth_service/internal/config"
 	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
 	customValidator "auth_service/internal/lib/validation/custom_validator"
@@ -36,7 +36,7 @@ func buildRouter(
 	)
 	oauthProviders := map[string]oauth.Provider{"google": googleProvider, "github": githubProvider}
 
-	twoFactorAuthService := twoFactorAuth.New(
+	twoFactorAuthService := twofactorauth.New(
 		pg,
 		rdb,
 		mq,

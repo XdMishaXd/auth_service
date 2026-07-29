@@ -19,6 +19,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
+	// Импортирует Swagger-документацию для регистрации спецификации API.
 	_ "auth_service/docs"
 )
 
@@ -151,29 +152,29 @@ func (a *Auth) Login(
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
 			log.Warn("user not found")
-			return nil, storage.ErrUserNotFound
+			return nil, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
 
 		log.Error("failed to get user", sl.Err(err))
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	if user.DeletedAt != nil {
-		return nil, ErrAccountDeleted
+		return nil, fmt.Errorf("%s: %w", op, ErrAccountDeleted)
 	}
 
 	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
 		log.Info("invalid credentials", sl.Err(err))
-		return nil, ErrInvalidCredentials
+		return nil, fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	if !user.IsVerified {
-		return nil, ErrEmailNotVerified
+		return nil, fmt.Errorf("%s: %w", op, ErrEmailNotVerified)
 	}
 
 	app, err := a.AppProvider.App(ctx, appID)
 	if err != nil {
-		return nil, ErrInvalidAppID
+		return nil, fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 	}
 
 	status, err := a.UsrProvider.TwoFAStatus(ctx, user.ID)
@@ -225,7 +226,7 @@ func (a *Auth) RegisterNewUser(
 		if errors.Is(err, storage.ErrUserAlreadyExists) {
 			log.Warn("User already exists")
 
-			return 0, storage.ErrUserAlreadyExists
+			return 0, fmt.Errorf("%s: %w", op, storage.ErrUserAlreadyExists)
 		}
 
 		log.Error("Failed to save user", sl.Err(err))
@@ -239,22 +240,22 @@ func (a *Auth) RegisterNewUser(
 func (a *Auth) CheckUserVerification(
 	ctx context.Context,
 	email string,
-) (int64, bool, error) {
+) (userID int64, isVerified bool, err error) {
 	const op = "auth.CheckUserVerification"
 
 	log := a.Log.With(
 		slog.String("op", op),
 	)
 
-	userID, isVerified, err := a.UsrProvider.CheckIfUserVerified(ctx, email)
+	userID, isVerified, err = a.UsrProvider.CheckIfUserVerified(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
-			return 0, false, storage.ErrUserNotFound
+			return 0, false, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
 
 		log.Info("failed to check user", sl.Err(err))
 
-		return 0, false, err
+		return 0, false, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return userID, isVerified, nil
@@ -263,7 +264,7 @@ func (a *Auth) CheckUserVerification(
 func (a *Auth) Refresh(
 	ctx context.Context,
 	refreshToken string,
-) (string, string, error) {
+) (accessToken, newRefreshToken string, err error) {
 	const op = "auth.refresh"
 
 	log := a.Log.With(
@@ -273,7 +274,7 @@ func (a *Auth) Refresh(
 	parts := strings.Split(refreshToken, ".")
 	if len(parts) != 2 {
 		log.Warn("invalid refresh token format")
-		return "", "", ErrInvalidCredentials
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	tokenID := parts[0]
@@ -287,39 +288,39 @@ func (a *Auth) Refresh(
 	rt, err := a.UsrProvider.RefreshTokenByID(ctx, uid)
 	if err != nil {
 		log.Warn("refresh token not found", sl.Err(err))
-		return "", "", ErrInvalidCredentials
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	if time.Now().After(rt.ExpiresAt) {
 		log.Warn("refresh token expired")
-		return "", "", ErrInvalidCredentials
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 	if !tokens.VerifyOpaqueToken(secret, rt.TokenHash) {
 		log.Warn("invalid refresh token")
-		return "", "", ErrInvalidCredentials
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	user, err := a.UsrProvider.UserByID(ctx, rt.UserID)
 	if err != nil {
 		log.Error("failed to load user", sl.Err(err))
-		return "", "", ErrInvalidCredentials
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	app, err := a.AppProvider.App(ctx, rt.AppID)
 	if err != nil {
-		return "", "", ErrInvalidAppID
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 	}
 
-	accessToken, err := jwtGen.NewToken(*user, *app, a.tokenTTL)
+	accessToken, err = jwtGen.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		log.Error("failed to generate access token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	_, newRefreshToken, newHash, err := tokens.NewRefreshToken(tokenID)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	err = a.UsrSaver.UpdateRefreshToken(
@@ -331,7 +332,7 @@ func (a *Auth) Refresh(
 	)
 	if err != nil {
 		log.Error("failed to update refresh token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return accessToken, newRefreshToken, nil
@@ -348,17 +349,17 @@ func (a *Auth) VerifyUser(
 		slog.String("op", op),
 	)
 
-	user_id, err := verification.ParseVerificationToken(verificationToken, verificationTokenSecret)
+	userID, err := verification.ParseVerificationToken(verificationToken, verificationTokenSecret)
 	if err != nil {
 		log.Error("failed to update parse verification token", sl.Err(err))
 
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	if err = a.UsrProvider.SetEmailVerified(ctx, user_id); err != nil {
+	if err = a.UsrProvider.SetEmailVerified(ctx, userID); err != nil {
 		log.Error("failed to update update status in database", sl.Err(err))
 
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
@@ -372,7 +373,7 @@ func (a *Auth) Logout(
 
 	parts := strings.Split(rawRefreshToken, ".")
 	if len(parts) != 2 {
-		return ErrInvalidCredentials
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	tokenID := parts[0]
@@ -385,16 +386,16 @@ func (a *Auth) Logout(
 
 	rt, err := a.UsrProvider.RefreshTokenByID(ctx, uid)
 	if err != nil {
-		return ErrInvalidCredentials
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	if !tokens.VerifyOpaqueToken(secret, rt.TokenHash) {
-		return ErrInvalidCredentials
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	err = a.UsrSaver.DeleteRefreshToken(ctx, rt.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
@@ -409,21 +410,21 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 
 	uid, err := a.UsrProvider.UserIDByEmail(ctx, email)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	err = a.UsrSaver.DeleteAllResetTokens(ctx, uid)
 	if err != nil {
 		log.Error("Failed to delete reset tokens", sl.Err(err))
 
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	tokenID, resetToken, hash, err := tokens.NewResetToken("")
 	if err != nil {
 		log.Error("Failed to generate reset token", sl.Err(err))
 
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	err = a.UsrSaver.SaveResetToken(
@@ -435,7 +436,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 	)
 	if err != nil {
 		log.Error("Failed to save reset token", sl.Err(err))
-		return "", err
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return resetToken, nil
@@ -455,13 +456,13 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 	}
 
 	if time.Now().After(rt.ExpiresAt) {
-		return ErrResetTokenExpired
+		return fmt.Errorf("%s: %w", op, ErrResetTokenExpired)
 	}
 	if rt.UsedAt != nil {
-		return ErrResetTokenUsed
+		return fmt.Errorf("%s: %w", op, ErrResetTokenUsed)
 	}
 	if !tokens.VerifyOpaqueToken(verifier, rt.TokenHash) {
-		return ErrInvalidCredentials
+		return fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
 
 	user, err := a.UsrProvider.UserByID(ctx, rt.UserID)
@@ -470,7 +471,7 @@ func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass str
 	}
 
 	if bcrypt.CompareHashAndPassword(user.PassHash, []byte(newPass)) == nil {
-		return ErrSamePassword
+		return fmt.Errorf("%s: %w", op, ErrSamePassword)
 	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(newPass), bcrypt.DefaultCost)
@@ -491,7 +492,7 @@ func (a *Auth) VerifyMagicLink(ctx context.Context, sessionID, rawToken string) 
 
 	userID, appID, err := a.TwoFA.VerifyLogin(ctx, sessionID, rawToken)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	user, err := a.UsrProvider.UserByID(ctx, userID)
@@ -522,7 +523,7 @@ func (a *Auth) Enable2FA(ctx context.Context, userID int64) error {
 	}
 
 	if status.IsEnabled {
-		return ErrTwoFAAlreadyEnabled
+		return fmt.Errorf("%s: %w", op, ErrTwoFAAlreadyEnabled)
 	}
 
 	if !status.HasPassword {
@@ -533,7 +534,7 @@ func (a *Auth) Enable2FA(ctx context.Context, userID int64) error {
 		}
 
 		if !hasOAuth {
-			return ErrNoAuthFactorAvailable
+			return fmt.Errorf("%s: %w", op, ErrNoAuthFactorAvailable)
 		}
 	}
 
@@ -564,7 +565,7 @@ func (a *Auth) Disable2FA(
 	}
 
 	if !status.IsEnabled {
-		return ErrTwoFANotEnabled
+		return fmt.Errorf("%s: %w", op, ErrTwoFANotEnabled)
 	}
 
 	switch {
@@ -577,18 +578,18 @@ func (a *Auth) Disable2FA(
 
 		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
 			log.Warn("disable 2fa: invalid password")
-			return ErrDisableConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDisableConfirmation)
 		}
 
 	default:
 		if sessionID == "" || rawToken == "" {
-			return ErrDisableConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDisableConfirmation)
 		}
 
 		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID, models.ActionDisable2FA); err != nil {
 			log.Warn("disable 2fa: invalid magic link confirmation", sl.Err(err))
 
-			return ErrDisableConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDisableConfirmation)
 		}
 	}
 
@@ -603,22 +604,28 @@ func (a *Auth) Disable2FA(
 }
 
 // * IssueTokens генерирует access и refresh токены и сохраняет refresh в БД.
-func (a *Auth) IssueTokens(ctx context.Context, user *models.User, app *models.App) (accessToken, refreshToken string, err error) {
+func (a *Auth) IssueTokens(
+	ctx context.Context,
+	user *models.User,
+	app *models.App,
+) (accessToken, refreshToken string, err error) {
+	const op = "auth.IssueTokens"
+
 	accessToken, err = jwtGen.NewToken(*user, *app, a.tokenTTL)
 	if err != nil {
 		a.Log.Error("failed to generate access token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	tokenID, refreshToken, hash, err := tokens.NewRefreshToken("")
 	if err != nil {
 		a.Log.Error("failed to generate refresh token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	if err := a.UsrSaver.SaveRefreshToken(ctx, tokenID, user.ID, app.ID, hash, time.Now().Add(a.refreshTTL)); err != nil {
 		a.Log.Error("failed to save refresh token", sl.Err(err))
-		return "", "", err
+		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	return accessToken, refreshToken, nil
@@ -640,14 +647,14 @@ func (a *Auth) DeleteAccount(
 	switch {
 	case user.PassHash != nil:
 		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
-			return ErrDeleteConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDeleteConfirmation)
 		}
 	default:
 		if sessionID == "" || rawToken == "" {
-			return ErrDeleteConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDeleteConfirmation)
 		}
 		if err := a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, userID, models.ActionDeleteAccount); err != nil {
-			return ErrDeleteConfirmation
+			return fmt.Errorf("%s: %w", op, ErrDeleteConfirmation)
 		}
 	}
 
@@ -656,7 +663,7 @@ func (a *Auth) DeleteAccount(
 		case errors.Is(err, storage.ErrUserAlreadyDeleted):
 			return nil
 		case errors.Is(err, storage.ErrUserNotFound):
-			return err
+			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		default:
 			return fmt.Errorf("%s: %w", op, err)
 		}
@@ -680,38 +687,44 @@ func (a *Auth) RestoreAccount(
 	user, err := a.UsrProvider.UserByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserNotFound) {
-			return "", "", storage.ErrUserNotFound
+			return "", "", fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
 		log.Error("failed to get user", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
 	if user.DeletedAt == nil {
-		return "", "", storage.ErrNothingToRestore
+		return "", "", fmt.Errorf("%s: %w", op, storage.ErrNothingToRestore)
 	}
 
 	switch {
 	case user.PassHash != nil:
 		if bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)) != nil {
 			log.Warn("restore account: invalid password", slog.Int64("user_id", user.ID))
-			return "", "", ErrRestoreConfirmation
+			return "", "", fmt.Errorf("%s: %w", op, ErrRestoreConfirmation)
 		}
 	default:
 		if sessionID == "" || rawToken == "" {
-			return "", "", ErrRestoreConfirmation
+			return "", "", fmt.Errorf("%s: %w", op, ErrRestoreConfirmation)
 		}
-		if err = a.TwoFA.VerifyForAction(ctx, sessionID, rawToken, user.ID, models.ActionRestoreAccount); err != nil {
+		if err = a.TwoFA.VerifyForAction(
+			ctx,
+			sessionID,
+			rawToken,
+			user.ID,
+			models.ActionRestoreAccount,
+		); err != nil {
 			log.Warn("restore account: invalid magic link confirmation", sl.Err(err))
-			return "", "", ErrRestoreConfirmation
+			return "", "", fmt.Errorf("%s: %w", op, ErrRestoreConfirmation)
 		}
 	}
 
 	if err = a.UsrSaver.RestoreAccount(ctx, user.ID); err != nil {
 		switch {
 		case errors.Is(err, storage.ErrNothingToRestore):
-			return "", "", storage.ErrNothingToRestore
+			return "", "", fmt.Errorf("%s: %w", op, storage.ErrNothingToRestore)
 		case errors.Is(err, storage.ErrUserNotFound):
-			return "", "", err
+			return "", "", fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		default:
 			log.Error("failed to restore account", sl.Err(err), slog.Int64("user_id", user.ID))
 			return "", "", fmt.Errorf("%s: %w", op, err)
@@ -720,7 +733,7 @@ func (a *Auth) RestoreAccount(
 
 	app, err := a.AppProvider.App(ctx, appID)
 	if err != nil {
-		return "", "", ErrInvalidAppID
+		return "", "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 	}
 
 	log.Info("account restored", slog.Int64("user_id", user.ID))
@@ -744,17 +757,23 @@ func (a *Auth) RequestRestoreConfirmation(
 	}
 
 	if user.DeletedAt == nil {
-		return "", storage.ErrNothingToRestore
+		return "", fmt.Errorf("%s: %w", op, storage.ErrNothingToRestore)
 	}
 
-	if _, err := a.AppProvider.App(ctx, appID); err != nil {
-		return "", ErrInvalidAppID
+	if _, err = a.AppProvider.App(ctx, appID); err != nil {
+		return "", fmt.Errorf("%s: %w", op, ErrInvalidAppID)
 	}
 
 	// appID нужен для issueMagicLink — restore не привязан к конкретному
 	// app в том же смысле, что login; берём appID=0 или отдельный подход.
 	// Требует решения: как auth-service узнаёт appID на неаутентифицированном restore-запросе.
-	sessionID, err := a.TwoFA.RequestActionConfirmation(ctx, user.ID, appID, models.ActionRestoreAccount, pendingSessionTTL)
+	sessionID, err := a.TwoFA.RequestActionConfirmation(
+		ctx,
+		user.ID,
+		appID,
+		models.ActionRestoreAccount,
+		pendingSessionTTL,
+	)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
