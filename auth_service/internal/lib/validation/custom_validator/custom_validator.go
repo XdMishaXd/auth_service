@@ -1,4 +1,4 @@
-package customValidator
+package customvalidator
 
 import (
 	"regexp"

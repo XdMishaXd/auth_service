@@ -10,7 +10,7 @@ import (
 	"auth_service/internal/auth"
 	twofactorauth "auth_service/internal/auth/two_factor_auth"
 	resp "auth_service/internal/lib/api/response"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/storage"
 
 	"github.com/go-chi/chi/v5/middleware"

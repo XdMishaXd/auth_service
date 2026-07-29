@@ -10,7 +10,7 @@ import (
 	"auth_service/internal/auth"
 	claimsParser "auth_service/internal/http_server/middleware/claims_parser"
 	resp "auth_service/internal/lib/api/response"
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"

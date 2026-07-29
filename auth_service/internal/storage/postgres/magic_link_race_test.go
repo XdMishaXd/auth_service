@@ -84,7 +84,7 @@ func setupTestRepo(t *testing.T) *Repo {
 
 // seedUserAndApp вставляет минимальные строки, нужные из-за FK-constraint'ов
 // magic_links (user_id, app_id).
-func seedUserAndApp(t *testing.T, ctx context.Context, repo *Repo) (userID int64, appID int64) {
+func seedUserAndApp(ctx context.Context, t *testing.T, repo *Repo) (userID, appID int64) {
 	t.Helper()
 
 	err := repo.pool.QueryRow(ctx, `
@@ -109,10 +109,11 @@ func seedUserAndApp(t *testing.T, ctx context.Context, repo *Repo) (userID int64
 }
 
 func TestConsumeMagicLink_ConcurrentRace(t *testing.T) {
-	ctx := context.Background()
-	repo := setupTestRepo(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	userID, appID := seedUserAndApp(t, ctx, repo)
+	repo := setupTestRepo(t)
+	userID, appID := seedUserAndApp(ctx, t, repo)
 
 	tokenHash := []byte("fixed-test-token-hash-for-race")
 	link := &models.MagicLink{
@@ -127,26 +128,34 @@ func TestConsumeMagicLink_ConcurrentRace(t *testing.T) {
 	}
 
 	const goroutines = 20
-	var wg sync.WaitGroup
+	var (
+		wg           sync.WaitGroup
+		mu           sync.Mutex
+		successCount int
+		winner       *models.MagicLink
+	)
+
 	results := make(chan error, goroutines)
 
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, err := repo.ConsumeMagicLink(ctx, tokenHash)
+	for range goroutines {
+		wg.Go(func() {
+			consumed, err := repo.ConsumeMagicLink(ctx, tokenHash)
+			if err == nil {
+				mu.Lock()
+				successCount++
+				winner = consumed
+				mu.Unlock()
+			}
 			results <- err
-		}()
+		})
 	}
 
 	wg.Wait()
 	close(results)
 
-	var successCount int
 	for err := range results {
 		switch {
 		case err == nil:
-			successCount++
 		case errors.Is(err, storage.ErrMagicLinkNotFound):
 			// ожидаемо для всех "проигравших" — токен уже потреблён
 		default:
@@ -156,5 +165,12 @@ func TestConsumeMagicLink_ConcurrentRace(t *testing.T) {
 
 	if successCount != 1 {
 		t.Fatalf("хочу ровно 1 успешное потребление из %d горутин, получил %d", goroutines, successCount)
+	}
+
+	if winner == nil {
+		t.Fatal("победитель не вернул MagicLink")
+	}
+	if winner.UserID != userID || int64(winner.AppID) != appID || winner.SessionID != "race-session" {
+		t.Fatalf("данные победителя не совпадают с сохранённым токеном: %+v", winner)
 	}
 }

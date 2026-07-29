@@ -9,8 +9,8 @@ import (
 
 	"auth_service/internal/auth"
 	resp "auth_service/internal/lib/api/response"
-	sl "auth_service/internal/lib/logger"
 	"auth_service/internal/lib/mailer"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/lib/verification"
 	"auth_service/internal/storage"
 

@@ -1,4 +1,4 @@
-package jwtGen
+package jwtgen
 
 import (
 	"context"
@@ -62,7 +62,7 @@ func ParseAndVerify(ctx context.Context, tokenString string, apps AppSecretProvi
 		return nil, ErrAppNotFound
 	}
 
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}

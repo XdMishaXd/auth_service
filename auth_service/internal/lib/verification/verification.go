@@ -49,7 +49,7 @@ func ParseVerificationToken(tokenStr, secret string) (int64, error) {
 
 	claims := jwt.MapClaims{}
 
-	parsedToken, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("%s: unexpected signing method", op)
 		}
@@ -67,12 +67,12 @@ func ParseVerificationToken(tokenStr, secret string) (int64, error) {
 		return 0, fmt.Errorf("%s: invalid token purpose", op)
 	}
 
-	if expFloat, ok := claims["exp"].(float64); ok {
-		if time.Now().Unix() > int64(expFloat) {
-			return 0, fmt.Errorf("%s: token expired", op)
-		}
-	} else {
+	expFloat, ok := claims["exp"].(float64)
+	if !ok {
 		return 0, fmt.Errorf("%s: missing exp claim", op)
+	}
+	if time.Now().Unix() > int64(expFloat) {
+		return 0, fmt.Errorf("%s: token expired", op)
 	}
 
 	subFloat, ok := claims["sub"].(float64)
@@ -92,5 +92,10 @@ func generateVerificationToken(userID int64, tokenTTL time.Duration, secret stri
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	return token.SignedString([]byte(secret))
+	signedToken, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return "", fmt.Errorf("failed to sign jwt: %w", err)
+	}
+
+	return signedToken, nil
 }

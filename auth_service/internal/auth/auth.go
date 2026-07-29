@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	jwtGen "auth_service/internal/lib/jwt"
+	jwtGen "auth_service/internal/lib/jwt_gen"
 	"auth_service/internal/lib/tokens"
 	"auth_service/internal/lib/verification"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -163,7 +163,7 @@ func (a *Auth) Login(
 		return nil, fmt.Errorf("%s: %w", op, ErrAccountDeleted)
 	}
 
-	if err := bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
+	if err = bcrypt.CompareHashAndPassword(user.PassHash, []byte(password)); err != nil {
 		log.Info("invalid credentials", sl.Err(err))
 		return nil, fmt.Errorf("%s: %w", op, ErrInvalidCredentials)
 	}
@@ -317,7 +317,7 @@ func (a *Auth) Refresh(
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	_, newRefreshToken, newHash, err := tokens.NewRefreshToken(tokenID)
+	token, err := tokens.NewRefreshToken(tokenID)
 	if err != nil {
 		log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
@@ -326,7 +326,7 @@ func (a *Auth) Refresh(
 	err = a.UsrSaver.UpdateRefreshToken(
 		ctx,
 		rt.ID,
-		newHash,
+		token.Hash,
 		rt.TokenHash,
 		time.Now().Add(a.refreshTTL),
 	)
@@ -335,7 +335,7 @@ func (a *Auth) Refresh(
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	return accessToken, newRefreshToken, nil
+	return accessToken, token.FullToken, nil
 }
 
 func (a *Auth) VerifyUser(
@@ -420,7 +420,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	tokenID, resetToken, hash, err := tokens.NewResetToken("")
+	token, err := tokens.NewResetToken("")
 	if err != nil {
 		log.Error("Failed to generate reset token", sl.Err(err))
 
@@ -429,9 +429,9 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 
 	err = a.UsrSaver.SaveResetToken(
 		ctx,
-		uuid.MustParse(tokenID),
+		uuid.MustParse(token.ID),
 		uid,
-		hash,
+		token.Hash,
 		time.Now().Add(a.resetTTL),
 	)
 	if err != nil {
@@ -439,7 +439,7 @@ func (a *Auth) Forgot(ctx context.Context, email string) (string, error) {
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	return resetToken, nil
+	return token.FullToken, nil
 }
 
 func (a *Auth) ResetPassword(ctx context.Context, tokenID, verifier, newPass string) error {
@@ -617,18 +617,25 @@ func (a *Auth) IssueTokens(
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	tokenID, refreshToken, hash, err := tokens.NewRefreshToken("")
+	token, err := tokens.NewRefreshToken("")
 	if err != nil {
 		a.Log.Error("failed to generate refresh token", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	if err := a.UsrSaver.SaveRefreshToken(ctx, tokenID, user.ID, app.ID, hash, time.Now().Add(a.refreshTTL)); err != nil {
+	if err := a.UsrSaver.SaveRefreshToken(
+		ctx,
+		token.ID,
+		user.ID,
+		app.ID,
+		token.Hash,
+		time.Now().Add(a.refreshTTL),
+	); err != nil {
 		a.Log.Error("failed to save refresh token", sl.Err(err))
 		return "", "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	return accessToken, refreshToken, nil
+	return accessToken, token.FullToken, nil
 }
 
 func (a *Auth) DeleteAccount(

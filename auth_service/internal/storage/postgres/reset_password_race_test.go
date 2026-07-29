@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,7 +15,7 @@ import (
 )
 
 // seedResetToken вставляет активный reset-токен для существующего пользователя.
-func seedResetToken(t *testing.T, ctx context.Context, repo *Repo, userID int64) uuid.UUID {
+func seedResetToken(ctx context.Context, t *testing.T, repo *Repo, userID int64) uuid.UUID {
 	t.Helper()
 
 	tokenID, err := uuid.NewV7()
@@ -30,11 +31,13 @@ func seedResetToken(t *testing.T, ctx context.Context, repo *Repo, userID int64)
 }
 
 func TestResetPassword_ConcurrentRace(t *testing.T) {
-	ctx := context.Background()
-	repo := setupTestRepo(t) // переиспользуем helper из magic_link_race_test.go
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	userID, _ := seedUserAndApp(t, ctx, repo)
-	tokenID := seedResetToken(t, ctx, repo, userID)
+	repo := setupTestRepo(t)
+
+	userID, _ := seedUserAndApp(ctx, t, repo)
+	tokenID := seedResetToken(ctx, t, repo, userID)
 
 	const goroutines = 20
 	var (
@@ -46,13 +49,9 @@ func TestResetPassword_ConcurrentRace(t *testing.T) {
 
 	results := make(chan error, goroutines)
 
-	for i := 0; i < goroutines; i++ {
-		i := i
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			newHash := []byte(fmt.Sprintf("new-password-hash-%d", i))
+	for i := range goroutines {
+		wg.Go(func() {
+			newHash := fmt.Appendf(nil, "new-password-hash-%d", i)
 			err := repo.ResetPassword(ctx, userID, tokenID, newHash)
 
 			if err == nil {
@@ -63,7 +62,7 @@ func TestResetPassword_ConcurrentRace(t *testing.T) {
 			}
 
 			results <- err
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -79,18 +78,15 @@ func TestResetPassword_ConcurrentRace(t *testing.T) {
 		t.Fatalf("хочу ровно 1 успешный сброс пароля из %d горутин, получил %d", goroutines, successCount)
 	}
 
-	// Проверяем, что реально применился именно хэш от единственного победителя,
-	// а не от кого-то из "проигравших" (защита от гонки на этапе UPDATE users).
 	var actualHash []byte
 	err := repo.pool.QueryRow(ctx, `SELECT password_hash FROM users WHERE id = $1`, userID).Scan(&actualHash)
 	if err != nil {
 		t.Fatalf("проверка password_hash: %v", err)
 	}
-	if string(actualHash) != string(winnerHash) {
+	if !bytes.Equal(actualHash, winnerHash) {
 		t.Fatalf("password_hash в БД не совпадает с хэшем победителя: хочу %q, получил %q", winnerHash, actualHash)
 	}
 
-	// Побочные эффекты транзакции — тоже часть контракта ResetPassword.
 	var refreshCount, resetTokenCount int
 	if err := repo.pool.QueryRow(ctx, `SELECT count(*) FROM refresh_tokens WHERE user_id = $1`, userID).Scan(&refreshCount); err != nil {
 		t.Fatalf("count refresh_tokens: %v", err)

@@ -1,11 +1,11 @@
-package claimsParser
+package claimsparser
 
 import (
 	"context"
 	"net/http"
 	"strings"
 
-	jwtGen "auth_service/internal/lib/jwt"
+	jwtGen "auth_service/internal/lib/jwt_gen"
 
 	"github.com/go-chi/render"
 )

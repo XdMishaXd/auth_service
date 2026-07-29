@@ -128,7 +128,7 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 }
 
 func parseResult(res any) (Decision, error) {
-	vals, ok := res.([]interface{})
+	vals, ok := res.([]any)
 	if !ok || len(vals) != 3 {
 		return Decision{}, fmt.Errorf("ratelimiter: unexpected result shape: %#v", res)
 	}

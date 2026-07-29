@@ -7,10 +7,11 @@ import (
 	"auth_service/internal/auth/oauth"
 	"auth_service/internal/config"
 	"auth_service/internal/http_server/handlers/infrastructure/health"
-	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics"
+	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics_handler"
+	httpRateLimit "auth_service/internal/http_server/middleware/http_rate_limit"
+	logformatter "auth_service/internal/http_server/middleware/log_formatter"
 	metricsCollector "auth_service/internal/http_server/middleware/metrics_collector"
-	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
-	jwtGen "auth_service/internal/lib/jwt"
+	jwtGen "auth_service/internal/lib/jwt_gen"
 	metricsService "auth_service/internal/metrics"
 	"auth_service/internal/rabbitmq"
 
@@ -57,8 +58,8 @@ func (rt *Router) Setup() *chi.Mux {
 	r.Group(func(r chi.Router) {
 		r.Use(metricsCollector.New(rt.d.Metrics))
 		r.Use(middleware.RequestID)
-		r.Use(middleware.RealIP)
-		r.Use(middleware.Logger)
+		r.Use(middleware.ClientIPFromHeader("X-Real-IP"))
+		r.Use(logformatter.NewRedactingLogger())
 		r.Use(middleware.Recoverer)
 
 		rt.registerSwagger(r)

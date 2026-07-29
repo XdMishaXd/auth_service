@@ -54,7 +54,7 @@ func setupLogger(env string) (*slog.Logger, error) {
 	return log, nil
 }
 
-func redactSensitive(groups []string, a slog.Attr) slog.Attr {
+func redactSensitive(_ []string, a slog.Attr) slog.Attr {
 	switch a.Key {
 	case "password", "token", "access_token", "refresh_token", "verifier":
 		return slog.String(a.Key, "[REDACTED]")

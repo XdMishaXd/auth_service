@@ -1,11 +1,11 @@
-package scalarHandler
+package scalarhandler
 
 import (
 	"fmt"
 	"log/slog"
 	"net/http"
 
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 )
 
 // New отдаёт HTML-страницу Scalar API Reference, которая сама
@@ -24,7 +24,7 @@ func New(log *slog.Logger, specURL string) http.HandlerFunc {
 </body>
 </html>`, specURL)
 
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, err := w.Write([]byte(page))
 		if err != nil {

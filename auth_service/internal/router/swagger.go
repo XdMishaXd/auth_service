@@ -2,7 +2,7 @@ package router
 
 import (
 	docsHandler "auth_service/internal/http_server/handlers/infrastructure/docs"
-	scalarHandler "auth_service/internal/http_server/handlers/infrastructure/scalar"
+	scalarHandler "auth_service/internal/http_server/handlers/infrastructure/scalar_handler"
 	swaggerAuth "auth_service/internal/http_server/middleware/swagger_auth"
 
 	"github.com/go-chi/chi/v5"

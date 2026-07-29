@@ -1,11 +1,11 @@
-package swaggerAuth
+package swaggerauth
 
 import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
 
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 )
 
 // New - middleware для защиты Swagger

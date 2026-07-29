@@ -20,13 +20,17 @@ func SendResetPassEmail(ctx context.Context, pub Publisher, resetToken, url, ema
 		Purpose: "reset_password",
 	}
 
-	err := pub.SendMessage(ctx, msg)
+	if err := pub.SendMessage(ctx, msg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
 
-	return err
+	return nil
 }
 
 func SendVerificationEmail(ctx context.Context, pub Publisher, msg models.Message) error {
-	err := pub.SendMessage(ctx, msg)
+	if err := pub.SendMessage(ctx, msg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
 
-	return err
+	return nil
 }

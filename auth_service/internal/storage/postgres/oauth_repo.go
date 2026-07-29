@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/lib/sl"
 	"auth_service/internal/models"
 	"auth_service/internal/storage"
 

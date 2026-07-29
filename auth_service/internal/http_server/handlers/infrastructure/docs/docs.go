@@ -7,7 +7,7 @@ import (
 	"github.com/swaggo/swag"
 
 	_ "auth_service/docs"
-	sl "auth_service/internal/lib/logger"
+	sl "auth_service/internal/lib/sl"
 )
 
 // New возвращает хендлер, отдающий сгенерированный OpenAPI-спек

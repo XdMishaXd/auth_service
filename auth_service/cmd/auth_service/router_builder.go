@@ -8,7 +8,7 @@ import (
 	"auth_service/internal/auth/oauth/providers"
 	twofactorauth "auth_service/internal/auth/two_factor_auth"
 	"auth_service/internal/config"
-	httpRateLimit "auth_service/internal/http_server/middleware/rate_limiter"
+	httpRateLimit "auth_service/internal/http_server/middleware/http_rate_limit"
 	customValidator "auth_service/internal/lib/validation/custom_validator"
 	metricsService "auth_service/internal/metrics"
 	"auth_service/internal/rabbitmq"

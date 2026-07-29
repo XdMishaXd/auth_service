@@ -5,14 +5,17 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"auth_service/internal/storage"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // seedOAuthOnlyUser создаёт пользователя без пароля с двумя привязанными
 // провайдерами — минимальный набор, при котором действует защита
 // "нельзя отвязать последний способ входа".
-func seedOAuthOnlyUser(t *testing.T, ctx context.Context, repo *Repo) int64 {
+func seedOAuthOnlyUser(ctx context.Context, t *testing.T, repo *Repo) int64 {
 	t.Helper()
 
 	var userID int64
@@ -46,27 +49,23 @@ func TestUnlinkOAuthAccount_ConcurrentRace(t *testing.T) {
 	ctx := context.Background()
 	repo := setupTestRepo(t)
 
-	userID := seedOAuthOnlyUser(t, ctx, repo)
+	userID := seedOAuthOnlyUser(ctx, t, repo)
 
 	providers := []string{"google", "github"}
-	var wg sync.WaitGroup
-	results := make(chan error, len(providers))
+	errs := make([]error, len(providers))
 
-	for _, provider := range providers {
-		provider := provider
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			err := repo.UnlinkOAuthAccount(ctx, userID, provider)
-			results <- err
-		}()
+	var eg errgroup.Group
+	for i, provider := range providers {
+		i, provider := i, provider
+		eg.Go(func() error {
+			errs[i] = repo.UnlinkOAuthAccount(ctx, userID, provider)
+			return nil // не используем возврат eg.Wait() — собираем ошибки сами
+		})
 	}
-
-	wg.Wait()
-	close(results)
+	_ = eg.Wait()
 
 	var successCount, lastAuthMethodCount int
-	for err := range results {
+	for _, err := range errs {
 		switch {
 		case err == nil:
 			successCount++
@@ -102,15 +101,17 @@ func TestUnlinkOAuthAccount_ConcurrentRace(t *testing.T) {
 // входа" не действует (hasPassword == true пропускает проверку remaining).
 // Обе конкурентные попытки unlink должны пройти успешно без дедлоков.
 func TestUnlinkOAuthAccount_WithPassword_ConcurrentDelete(t *testing.T) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	repo := setupTestRepo(t)
 
 	var userID int64
 	err := repo.pool.QueryRow(ctx, `
-		INSERT INTO users (email, username, password_hash, is_verified)
-		VALUES ('oauth-race-pw@test.local', 'oauth_race_pw_user', 'some-hash', true)
-		RETURNING id
-	`).Scan(&userID)
+        INSERT INTO users (email, username, password_hash, is_verified)
+        VALUES ('oauth-race-pw@test.local', 'oauth_race_pw_user', 'some-hash', true)
+        RETURNING id
+    `).Scan(&userID)
 	if err != nil {
 		t.Fatalf("seed user with password: %v", err)
 	}
@@ -122,18 +123,14 @@ func TestUnlinkOAuthAccount_WithPassword_ConcurrentDelete(t *testing.T) {
 		}
 	}
 
-	var wg sync.WaitGroup
 	results := make(chan error, len(providers))
 
+	var wg sync.WaitGroup
 	for _, provider := range providers {
-		provider := provider
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			results <- repo.UnlinkOAuthAccount(ctx, userID, provider)
-		}()
+		})
 	}
-
 	wg.Wait()
 	close(results)
 
