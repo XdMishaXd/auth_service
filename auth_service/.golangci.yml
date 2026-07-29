@@ -4,35 +4,22 @@ run:
   timeout: 5m
   tests: true
 
-exclusions:
-  paths:
-    - docs
-
 linters:
   default: none
 
   enable:
-    # Базовые
     - errcheck
     - govet
     - staticcheck
     - ineffassign
     - unused
-
-    # Error handling
     - errorlint
     - wrapcheck
-
-    # Context
     - contextcheck
     - noctx
     - containedctx
-
-    # Style / idiomatic Go
     - revive
     - gocritic
-
-    # Security
     - gosec
 
   settings:
@@ -90,21 +77,22 @@ linters:
       excludes:
         - G104
 
+  exclusions:
+    paths:
+      - docs
+
     rules:
-      # Тестовые файлы
       - path: _test\.go
         linters:
           - wrapcheck
           - gosec
           - errcheck
 
-      # Моки в тестах
       - path: _test\.go
         linters:
           - revive
         text: "unused-parameter"
 
-      # QF1008
       - linters:
           - staticcheck
         text: "QF1008"
