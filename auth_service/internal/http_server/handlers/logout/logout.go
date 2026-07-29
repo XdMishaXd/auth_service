@@ -16,11 +16,11 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
-	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format" example:"fkajeDJ1p3FJ..."`
+type request struct {
+	RefreshToken string `json:"refresh_token" validate:"required,refresh_token_format" example:"fkajeDJ1p3FJ..."` //nolint:revive // custom validator
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
@@ -45,7 +45,6 @@ type Response struct {
 // @Description  ### Безопасность:
 // @Description  - Токен в blacklist хранится только до истечения его TTL
 // @Description  - При попытке использовать инвалидированный токен возвращается 401
-// @Description  - Логирование всех операций logout для аудита
 // @Tags         auth
 // @Accept       json
 // @Produce      json
@@ -65,24 +64,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.logout.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -94,7 +91,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -105,30 +102,29 @@ func New(
 		defer cancel()
 
 		if err := authMiddleware.Logout(ctx, req.RefreshToken); err != nil {
-			log.Error("failed to logout user", sl.Err(err))
-
 			if errors.Is(err, auth.ErrInvalidCredentials) {
+				reqLog.Warn("logout rejected: invalid or expired refresh token")
+
 				render.Status(r, http.StatusUnauthorized)
-
 				render.JSON(w, r, resp.Error("invalid credentials"))
-
 				return
 			}
 
+			reqLog.Error("failed to logout user", sl.Err(err))
+
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
-
 			return
 		}
 
-		log.Info("user logged out successfully")
+		reqLog.Info("user logged out successfully")
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
 }

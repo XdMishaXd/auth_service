@@ -16,7 +16,7 @@ import (
 const oauthStatePrefix = "oauth_state:"
 
 // SaveOAuthState сохраняет одноразовый state-токен с TTL.
-func (r *RedisRepo) SaveOAuthState(
+func (r *Repo) SaveOAuthState(
 	ctx context.Context,
 	state string,
 	payload oauth.StatePayload,
@@ -39,7 +39,7 @@ func (r *RedisRepo) SaveOAuthState(
 }
 
 // GetAndDeleteOAuthState атомарно читает и удаляет state-токен (GETDEL).
-func (r *RedisRepo) GetAndDeleteOAuthState(
+func (r *Repo) GetAndDeleteOAuthState(
 	ctx context.Context,
 	state string,
 ) (*oauth.StatePayload, error) {

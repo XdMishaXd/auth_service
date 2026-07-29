@@ -1,4 +1,4 @@
-package resendMagicLink
+package resendmagiclink
 
 import (
 	"context"
@@ -17,11 +17,11 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	SessionID string `json:"session_id" validate:"required" example:"abcDEF123..."`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
@@ -50,16 +50,19 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.twofa.resend.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
+			reqLog.Error("failed to decode request body", sl.Err(err))
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
+
 			return
 		}
 
@@ -69,11 +72,14 @@ func New(
 			if errors.As(err, &validateErr) {
 				render.Status(r, http.StatusBadRequest)
 				render.JSON(w, r, resp.ValidationError(validateErr))
+
 				return
 			}
 
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
+
 			return
 		}
 
@@ -82,26 +88,28 @@ func New(
 
 		if err := authMiddleware.TwoFA.Resend(ctx, req.SessionID); err != nil {
 			if errors.Is(err, storage.ErrPendingSessionNotFound) {
-				log.Warn("resend failed: pending session not found", sl.Err(err))
+				reqLog.Warn("resend failed: pending session not found", sl.Err(err))
+
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("session expired, please log in again"))
 				return
 			}
 
-			log.Error("failed to resend magic link", sl.Err(err))
+			reqLog.Error("failed to resend magic link", sl.Err(err))
+
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
 			return
 		}
 
-		log.Info("magic link resent")
+		reqLog.Info("magic link resent")
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
 }

@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,15 +16,15 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Account struct {
+type account struct {
 	Provider  string    `json:"provider" example:"google"`
 	Email     string    `json:"email" example:"example@domain.com"`
 	CreatedAt time.Time `json:"created_at" example:"2026-07-24T12:00:00Z"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
-	Accounts []Account `json:"accounts"`
+	Accounts []account `json:"accounts"`
 }
 
 // New godoc
@@ -40,25 +41,31 @@ type Response struct {
 func New(
 	log *slog.Logger,
 	authService *oauth.OAuthService,
+	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.oauth.accounts.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		claims, ok := claimsParser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
 			return
 		}
 
-		accounts, err := authService.ListAccounts(r.Context(), claims.UserID)
+		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
+		defer cancel()
+
+		accounts, err := authService.ListAccounts(ctx, claims.UserID)
 		if err != nil {
-			log.Error("failed to list oauth accounts", sl.Err(err))
+			reqLog.Error("failed to list oauth accounts", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal server error"))
@@ -66,23 +73,23 @@ func New(
 			return
 		}
 
-		ResponseOK(w, r, toAccounts(accounts))
+		responseOK(w, r, toAccounts(accounts))
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accounts []Account) {
+func responseOK(w http.ResponseWriter, r *http.Request, accounts []account) {
 	render.Status(r, http.StatusOK)
-	render.JSON(w, r, Response{
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 		Accounts: accounts,
 	})
 }
 
-func toAccounts(accounts []*models.OAuthAccount) []Account {
-	result := make([]Account, 0, len(accounts))
+func toAccounts(accounts []*models.OAuthAccount) []account {
+	result := make([]account, 0, len(accounts))
 
 	for _, a := range accounts {
-		result = append(result, Account{
+		result = append(result, account{
 			Provider:  a.Provider,
 			Email:     a.Email,
 			CreatedAt: a.CreatedAt,

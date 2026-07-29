@@ -18,14 +18,15 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	Email string `json:"email" validate:"required,email" example:"example@domain.com"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
+// New godoc
 // @Summary      Запрос на сброс пароля
 // @Description  Запускает процесс сброса пароля для указанного адреса электронной почты.
 // @Description  Независимо от того, существует ли аккаунт с указанным email,
@@ -54,24 +55,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.password.forgot.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -83,7 +82,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -96,12 +95,12 @@ func New(
 		resetToken, err := authMiddleware.Forgot(ctx, req.Email)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserNotFound) {
-				log.Info("forgot password requested for non-existent email")
-				ResponseOK(w, r)
+				reqLog.Info("forgot password requested for non-existent email")
+				responseOK(w, r)
 				return
 			}
 
-			log.Error("failed to generate reset token", sl.Err(err))
+			reqLog.Error("failed to generate reset token", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -110,17 +109,17 @@ func New(
 		}
 
 		if err := mailer.SendResetPassEmail(ctx, msgSender, resetToken, address, req.Email); err != nil {
-			log.Error("failed to send reset email, user will not receive it", sl.Err(err))
-			ResponseOK(w, r)
+			reqLog.Error("failed to send reset email, user will not receive it", sl.Err(err))
+			responseOK(w, r)
 			return
 		}
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
 }

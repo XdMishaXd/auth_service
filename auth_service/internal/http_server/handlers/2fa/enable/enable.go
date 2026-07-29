@@ -18,7 +18,7 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
@@ -42,56 +42,66 @@ func New(
 	handlerTimeout time.Duration,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.login.New"
+		const op = "handlers.twofa.enable.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		claims, ok := claimsParser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
 			return
 		}
+
+		reqLog = reqLog.With(slog.Int64("user_id", claims.UserID))
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
 		err := authMiddleware.Enable2FA(ctx, claims.UserID)
 		if err != nil {
-			switch {
-			case errors.Is(err, auth.ErrTwoFAAlreadyEnabled):
-				render.Status(r, http.StatusConflict)
-				render.JSON(w, r, resp.Error("2fa already enabled"))
-				return
-			case errors.Is(err, auth.ErrNoAuthFactorAvailable):
-				render.Status(r, http.StatusConflict)
-				render.JSON(w, r, resp.Error("no password or linked oauth account to enable 2fa"))
-				return
-			case errors.Is(err, storage.ErrUserNotFound):
-				render.Status(r, http.StatusNotFound)
-				render.JSON(w, r, resp.Error("user not found"))
-				return
-			}
+			status, msg := mapEnable2FAError(reqLog, err)
 
-			log.Error("failed to enable 2fa", sl.Err(err))
-
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, resp.Error("Internal error"))
-
+			render.Status(r, status)
+			render.JSON(w, r, resp.Error(msg))
 			return
 		}
 
-		log.Info("2fa enabled", slog.Int64("user_id", claims.UserID))
+		reqLog.Info("2fa enabled", slog.Int64("user_id", claims.UserID))
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
+}
+
+// mapEnable2FAError сопоставляет ошибку Enable2FA с HTTP-статусом
+// и логирует её на подходящем уровне.
+func mapEnable2FAError(reqLog *slog.Logger, err error) (statusCode int, errForReturn string) {
+	switch {
+	case errors.Is(err, auth.ErrTwoFAAlreadyEnabled):
+		reqLog.Warn("enable 2fa rejected: already enabled")
+		return http.StatusConflict, "2fa already enabled"
+
+	case errors.Is(err, auth.ErrNoAuthFactorAvailable):
+		reqLog.Warn("enable 2fa rejected: no auth factor available")
+		return http.StatusConflict, "no password or linked oauth account to enable 2fa"
+
+	case errors.Is(err, storage.ErrUserNotFound):
+		reqLog.Warn("enable 2fa rejected: user not found")
+		return http.StatusNotFound, "user not found"
+
+	default:
+		reqLog.Error("failed to enable 2fa", sl.Err(err))
+		return http.StatusInternalServerError, "Internal error"
+	}
 }

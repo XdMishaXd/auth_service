@@ -12,7 +12,7 @@ import (
 // seedOAuthOnlyUser создаёт пользователя без пароля с двумя привязанными
 // провайдерами — минимальный набор, при котором действует защита
 // "нельзя отвязать последний способ входа".
-func seedOAuthOnlyUser(t *testing.T, ctx context.Context, repo *PostgresRepo) int64 {
+func seedOAuthOnlyUser(t *testing.T, ctx context.Context, repo *Repo) int64 {
 	t.Helper()
 
 	var userID int64

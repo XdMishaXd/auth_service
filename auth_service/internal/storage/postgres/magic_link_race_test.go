@@ -22,7 +22,7 @@ import (
 
 // setupTestRepo поднимает реальный Postgres в контейнере, накатывает схему
 // из init_table и возвращает готовый PostgresRepo поверх настоящего pool.
-func setupTestRepo(t *testing.T) *PostgresRepo {
+func setupTestRepo(t *testing.T) *Repo {
 	t.Helper()
 	ctx := context.Background()
 
@@ -79,12 +79,12 @@ func setupTestRepo(t *testing.T) *PostgresRepo {
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	return &PostgresRepo{pool: pool, log: log}
+	return &Repo{pool: pool, log: log}
 }
 
 // seedUserAndApp вставляет минимальные строки, нужные из-за FK-constraint'ов
 // magic_links (user_id, app_id).
-func seedUserAndApp(t *testing.T, ctx context.Context, repo *PostgresRepo) (userID int64, appID int64) {
+func seedUserAndApp(t *testing.T, ctx context.Context, repo *Repo) (userID int64, appID int64) {
 	t.Helper()
 
 	err := repo.pool.QueryRow(ctx, `

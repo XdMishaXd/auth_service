@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, passHash []byte) (int64, error) {
+func (r *Repo) SaveUser(ctx context.Context, email, username string, passHash []byte) (int64, error) {
 	const op = "storage.postgres.SaveUser"
 
 	query := `
@@ -38,7 +38,7 @@ func (r *PostgresRepo) SaveUser(ctx context.Context, email, username string, pas
 	return id, nil
 }
 
-func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (*models.User, error) {
+func (r *Repo) UserByEmail(ctx context.Context, email string) (*models.User, error) {
 	const op = "storage.postgres.User"
 
 	query := `
@@ -69,7 +69,7 @@ func (r *PostgresRepo) UserByEmail(ctx context.Context, email string) (*models.U
 	return &u, nil
 }
 
-func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, error) {
+func (r *Repo) UserByID(ctx context.Context, id int64) (*models.User, error) {
 	const op = "storage.postgres.UserByID"
 
 	query := `
@@ -99,7 +99,7 @@ func (r *PostgresRepo) UserByID(ctx context.Context, id int64) (*models.User, er
 	return &u, nil
 }
 
-func (r *PostgresRepo) UserIDByEmail(ctx context.Context, email string) (int64, error) {
+func (r *Repo) UserIDByEmail(ctx context.Context, email string) (int64, error) {
 	const op = "storage.postgres.UserByEmail"
 
 	query := `
@@ -122,8 +122,8 @@ func (r *PostgresRepo) UserIDByEmail(ctx context.Context, email string) (int64, 
 	return id, nil
 }
 
-// * CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
-func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (userID int64, isVerified bool, err error) {
+// CheckIfUserVerified проверяет, подтвердил ли пользователь свой email
+func (r *Repo) CheckIfUserVerified(ctx context.Context, email string) (userID int64, isVerified bool, err error) {
 	const op = "storage.postgres.CheckIfUserVerified"
 
 	query := `	
@@ -148,7 +148,7 @@ func (r *PostgresRepo) CheckIfUserVerified(ctx context.Context, email string) (u
 	return userID, isVerified, nil
 }
 
-func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error {
+func (r *Repo) SetEmailVerified(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.SetEmailVerified"
 
 	query := `UPDATE users SET is_verified = TRUE WHERE id = $1 AND deleted_at IS NULL;`
@@ -164,7 +164,7 @@ func (r *PostgresRepo) SetEmailVerified(ctx context.Context, userID int64) error
 	return nil
 }
 
-func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
+func (r *Repo) DeleteAccount(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.DeleteAccount"
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -234,8 +234,8 @@ func (r *PostgresRepo) DeleteAccount(ctx context.Context, userID int64) error {
 	return nil
 }
 
-// * RestoreAccount снимает флаг soft-delete, если grace period ещё не истёк.
-func (r *PostgresRepo) RestoreAccount(ctx context.Context, userID int64) error {
+// RestoreAccount снимает флаг soft-delete, если grace period ещё не истёк.
+func (r *Repo) RestoreAccount(ctx context.Context, userID int64) error {
 	const op = "storage.postgres.RestoreAccount"
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -267,7 +267,7 @@ func (r *PostgresRepo) RestoreAccount(ctx context.Context, userID int64) error {
 	if deletedAt == nil {
 		return storage.ErrNothingToRestore
 	}
-	if deletedAt.Before(time.Now().Add(storage.AccountRestoreWindow)) {
+	if deletedAt.Add(storage.AccountRestoreWindow).Before(time.Now()) {
 		return storage.ErrRestoreWindowExpired
 	}
 

@@ -1,4 +1,4 @@
-package rateLimit
+package ratelimit
 
 import (
 	"context"
@@ -17,8 +17,10 @@ import (
 var (
 	ErrRedisUnavailable = errors.New("ratelimiter: redis unavailable")
 	ErrLimitExeeded     = errors.New("limit exeeded")
+	ErrRedisRepoIsNil   = errors.New("ratelimiter: redis repo is nil")
 )
 
+// Redis интерфейс для работы с redis
 type Redis interface {
 	RegisterAtomicOp(ctx context.Context) (string, error)
 	ExecuteAtomicOp(ctx context.Context, opID string, keys []string, args ...any) (any, error)
@@ -44,7 +46,7 @@ type Decision struct {
 // Один экземпляр переиспользуется на весь процесс (операция регистрируется
 // один раз в New, повторная регистрация происходит лениво при NOSCRIPT).
 type Limiter struct {
-	redis *redis.RedisRepo
+	redis *redis.Repo
 	opID  string
 }
 
@@ -71,9 +73,9 @@ func (p Policy) Validate() error {
 // New создаёт Limiter и сразу регистрирует атомарную операцию (GCRA).
 // Требует живого redis на старте — сервис должен упасть при старте,
 // если Redis недоступен, а не молча деградировать позже без объяснимой причины.
-func New(ctx context.Context, r *redis.RedisRepo) (*Limiter, error) {
+func New(ctx context.Context, r *redis.Repo) (*Limiter, error) {
 	if r == nil {
-		return nil, fmt.Errorf("ratelimiter: redis repo is nil")
+		return nil, ErrRedisRepoIsNil
 	}
 
 	opID, err := r.RegisterAtomicOp(ctx)
@@ -90,13 +92,13 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 		return Decision{}, err
 	}
 
-	now := time.Now().UnixMilli()
+	nowMs := time.Now().UnixMilli()
 
 	res, err := l.redis.ExecuteAtomicOp(ctx, l.opID, []string{key},
 		policy.Burst,
 		policy.ratePerSecond(),
 		1,
-		now,
+		nowMs,
 	)
 	if err != nil {
 		if isNoScript(err) {
@@ -110,7 +112,7 @@ func (l *Limiter) Allow(ctx context.Context, key string, policy Policy) (Decisio
 				policy.Burst,
 				policy.ratePerSecond(),
 				1,
-				now,
+				nowMs,
 			)
 		}
 
@@ -162,6 +164,7 @@ func toInt64(v any) (int64, error) {
 	}
 }
 
+// BuildKey генерирует hex ключ
 func BuildKey(endpoint, keyType, identifier string) string {
 	h := sha256.Sum256([]byte(identifier))
 	return fmt.Sprintf("ratelimit:%s:%s:%s", endpoint, keyType, hex.EncodeToString(h[:8]))

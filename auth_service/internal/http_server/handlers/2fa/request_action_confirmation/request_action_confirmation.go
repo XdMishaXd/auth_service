@@ -1,4 +1,4 @@
-package requestAction
+package requestactionconfirmation
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 	SessionID string `json:"session_id" example:"abcDEF123..."`
 }
@@ -83,7 +83,7 @@ func newActionConfirmationHandler(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.twofa.requestaction.newActionConfirmationHandler"
 
-		log := log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 			slog.String("action", string(action)),
@@ -91,10 +91,14 @@ func newActionConfirmationHandler(
 
 		claims, ok := claimsParser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
 			return
 		}
+
+		reqLog = reqLog.With(slog.Int64("user_id", claims.UserID))
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
@@ -106,20 +110,21 @@ func newActionConfirmationHandler(
 			pendingSessionTTL,
 		)
 		if err != nil {
-			log.Error("failed to request action confirmation", sl.Err(err))
+			reqLog.Error("failed to request action confirmation", sl.Err(err))
+
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
 			return
 		}
 
-		log.Info("action confirmation requested", slog.Int64("user_id", claims.UserID))
+		reqLog.Info("action confirmation requested")
 
 		responseOK(w, r, sessionID)
 	}
 }
 
 func responseOK(w http.ResponseWriter, r *http.Request, sessionID string) {
-	render.JSON(w, r, Response{
+	render.JSON(w, r, response{
 		Response:  resp.OK(),
 		SessionID: sessionID,
 	})

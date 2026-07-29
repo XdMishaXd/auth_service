@@ -17,14 +17,17 @@ const (
 	dlqName         = "email.verification.dlq"
 )
 
+// RabbitMQClient представляет собой клиент для взаимодействия с RabbitMQ.
+// Он инкапсулирует в себе сетевое соединение, канал и целевую очередь.
 type RabbitMQClient struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	queue   amqp.Queue
 }
 
-func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
-	const op = "rabbimq.New"
+// New - конструктор для класса RabbitMQClient
+func New(urlForConn, queueName string) (*RabbitMQClient, error) {
+	const op = "rabbitmq.New"
 
 	conn, err := amqp.Dial(urlForConn)
 	if err != nil {
@@ -64,15 +67,16 @@ func New(urlForConn string, queueName string) (*RabbitMQClient, error) {
 	return &RabbitMQClient{conn: conn, channel: ch, queue: q}, nil
 }
 
+// SendMessage маршалит сообщение в json и отправляет его в очередь
 func (r *RabbitMQClient) SendMessage(ctx context.Context, msg models.Message) error {
-	const op = "rabbimq.SendMessage"
+	const op = "rabbitmq.SendMessage"
 
 	body, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	return r.channel.PublishWithContext(
+	err = r.channel.PublishWithContext(
 		ctx,
 		"",
 		r.queue.Name,
@@ -85,8 +89,14 @@ func (r *RabbitMQClient) SendMessage(ctx context.Context, msg models.Message) er
 			Timestamp:    time.Now(),
 		},
 	)
+	if err != nil {
+		return fmt.Errorf("publish to queue %q: %w", r.queue.Name, err)
+	}
+
+	return nil
 }
 
+// Close закрывает соединение с rabbitmq
 func (r *RabbitMQClient) Close(ctx context.Context) error {
 	done := make(chan error, 1)
 
@@ -112,7 +122,7 @@ func (r *RabbitMQClient) Close(ctx context.Context) error {
 // declareDeadLetterInfra объявляет DLX-exchange и DLQ, куда попадают
 // сообщения, которые consumer явно nack'нул без requeue.
 func declareDeadLetterInfra(ch *amqp.Channel, mainQueueName, dlxName, dlqName string) error {
-	const op = "rabbimq.declareDeadLetterInfra"
+	const op = "rabbitmq.declareDeadLetterInfra"
 
 	if err := ch.ExchangeDeclare(
 		dlxName, // используем параметр, а не глобальную константу

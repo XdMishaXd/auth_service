@@ -16,11 +16,11 @@ import (
 	"github.com/go-chi/render"
 )
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
-type Request struct {
+type request struct {
 	Password  string `json:"password,omitempty" example:"SecurePass123!"`
 	SessionID string `json:"session_id,omitempty" example:"abcDEF123..."`
 	Token     string `json:"token,omitempty" example:"fkajeDJ1p3FJ..."`
@@ -50,62 +50,75 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.twofa.disable.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
 		claims, ok := claimsParser.ClaimsFromContext(r.Context())
 		if !ok {
+			reqLog.Error("claims missing from context after RequireAuth")
+
 			render.Status(r, http.StatusUnauthorized)
 			render.JSON(w, r, resp.Error("invalid or expired access token"))
 			return
 		}
 
-		var req Request
+		reqLog = reqLog.With(slog.Int64("user_id", claims.UserID))
+
+		var req request
 
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
+			reqLog.Error("Failed to decode request body", sl.Err(err))
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
+
 			return
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), handlerTimeout)
 		defer cancel()
 
-		err := authMiddleware.Disable2FA(
+		if err := authMiddleware.Disable2FA(
 			ctx,
 			claims.UserID,
 			req.Password,
 			req.SessionID,
 			req.Token,
-		)
-		if err != nil {
-			switch {
-			case errors.Is(err, auth.ErrTwoFANotEnabled):
-				render.Status(r, http.StatusConflict)
-				render.JSON(w, r, resp.Error("2fa is not enabled"))
-				return
-			case errors.Is(err, auth.ErrDisableConfirmation):
-				render.Status(r, http.StatusUnauthorized)
-				render.JSON(w, r, resp.Error("invalid confirmation"))
-				return
-			}
-
-			log.Error("failed to disable 2fa", sl.Err(err))
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, resp.Error("Internal error"))
+		); err != nil {
+			status, msg := mapDisable2FAError(reqLog, err)
+			render.Status(r, status)
+			render.JSON(w, r, resp.Error(msg))
 			return
 		}
 
-		log.Info("2fa disabled", slog.Int64("user_id", claims.UserID))
+		reqLog.Info("2fa disabled")
 
-		ResponseOK(w, r)
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
+}
+
+// mapDisable2FAError сопоставляет ошибку Disable2FA с HTTP-статусом
+// и логирует её на подходящем уровне.
+func mapDisable2FAError(reqLog *slog.Logger, err error) (statusCode int, errForReturn string) {
+	switch {
+	case errors.Is(err, auth.ErrTwoFANotEnabled):
+		reqLog.Warn("disable 2fa rejected: not enabled")
+		return http.StatusConflict, "2fa is not enabled"
+
+	case errors.Is(err, auth.ErrDisableConfirmation):
+		reqLog.Warn("disable 2fa rejected: invalid confirmation")
+		return http.StatusUnauthorized, "invalid confirmation"
+
+	default:
+		reqLog.Error("failed to disable 2fa", sl.Err(err))
+		return http.StatusInternalServerError, "Internal error"
+	}
 }

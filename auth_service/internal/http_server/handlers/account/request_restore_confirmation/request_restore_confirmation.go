@@ -1,7 +1,8 @@
-package requestRestoreConfirmation
+package requestrestoreconfirmation
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -9,23 +10,24 @@ import (
 	"auth_service/internal/auth"
 	resp "auth_service/internal/lib/api/response"
 	sl "auth_service/internal/lib/logger"
+	"auth_service/internal/storage"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	Email string `json:"email" validate:"required,email" example:"example@domain.com"`
 	AppID int32  `json:"app_id" validate:"required,gt=0" example:"1"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	SessionID string `json:"session_id" example:"abcDEF123..."`
 }
 
-// NewRequestConfirmation godoc
+// New godoc
 // @Summary      Запросить подтверждение восстановления аккаунта через magic link
 // @Description  Отправляет magic-link код на email указанного (soft-deleted)
 // @Description  аккаунта для подтверждения восстановления. Неаутентифицированный
@@ -50,20 +52,31 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.account.restore.NewRequestConfirmation"
 
-		log := log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("invalid request"))
 			return
 		}
 		if err := validate.Struct(req); err != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.Error("invalid request"))
+			var validateErr validator.ValidationErrors
+
+			if errors.As(err, &validateErr) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, resp.ValidationError(validateErr))
+
+				return
+			}
+
+			reqLog.Error("unexpected validation error type", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("internal error"))
+
 			return
 		}
 
@@ -72,22 +85,26 @@ func New(
 
 		sessionID, err := authService.RequestRestoreConfirmation(ctx, req.Email, req.AppID, pendingSessionTTL)
 		if err != nil {
-			// Nameренно не различаем "не найден"/"не удалён" на HTTP-уровне —
-			// см. обсуждение enumeration risk. Один и тот же ответ клиенту
-			// независимо от реальной причины, ошибка логируется полностью.
-			log.Info("restore confirmation request completed", sl.Err(err))
+			// Клиенту всегда один и тот же ответ (anti-enumeration).
+			switch {
+			case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, storage.ErrNothingToRestore):
+				reqLog.Info("restore confirmation request completed: no matching account")
+			default:
+				reqLog.Error("failed to send restore confirmation", sl.Err(err))
+			}
+
 			responseOK(w, r, "")
 			return
 		}
 
-		log.Info("restore confirmation requested")
+		reqLog.Info("restore confirmation requested")
 
 		responseOK(w, r, sessionID)
 	}
 }
 
 func responseOK(w http.ResponseWriter, r *http.Request, sessionID string) {
-	render.JSON(w, r, Response{
+	render.JSON(w, r, response{
 		Response:  resp.OK(),
 		SessionID: sessionID,
 	})

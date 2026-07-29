@@ -17,10 +17,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-// Request — ровно один из двух способов подтверждения: Password ИЛИ
-// SessionID+Code. Email обязателен всегда — юзер не аутентифицирован,
-// у него нет access-токена, чтобы определить его иначе.
-type Request struct {
+type request struct {
 	Email     string `json:"email" validate:"required,email" example:"example@domain.com"`
 	Password  string `json:"password,omitempty" example:"SecurePass123!"`
 	SessionID string `json:"session_id,omitempty" example:"fkajeDJ1p3FJ..."`
@@ -28,7 +25,7 @@ type Request struct {
 	AppID     int32  `json:"app_id" validate:"required,gt=0" example:"1"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -61,26 +58,40 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.account.restore.New"
 
-		log := log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 		if err := render.DecodeJSON(r.Body, &req); err != nil {
+			reqLog.Error("failed to decode request body", sl.Err(err))
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("invalid request"))
 			return
 		}
 		if err := validate.Struct(req); err != nil {
-			render.Status(r, http.StatusBadRequest)
-			render.JSON(w, r, resp.Error("invalid request"))
+			var validateErr validator.ValidationErrors
+
+			if errors.As(err, &validateErr) {
+				render.Status(r, http.StatusBadRequest)
+				render.JSON(w, r, resp.ValidationError(validateErr))
+
+				return
+			}
+
+			reqLog.Error("unexpected validation error type", sl.Err(err))
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("internal error"))
+
 			return
 		}
 
 		hasPassword := req.Password != ""
 		hasMagicLink := req.SessionID != "" && req.Token != ""
 		if hasPassword == hasMagicLink {
+			reqLog.Warn("restore rejected: ambiguous confirmation method")
+
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("provide either password or session_id+code, not both or neither"))
 			return
@@ -102,26 +113,26 @@ func New(
 			case errors.Is(err, auth.ErrRestoreConfirmation),
 				errors.Is(err, storage.ErrUserNotFound),
 				errors.Is(err, storage.ErrNothingToRestore):
-				log.Info("restore rejected", sl.Err(err), slog.String("email", req.Email))
+				reqLog.Info("restore rejected", sl.Err(err))
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("invalid confirmation"))
 				return
 			default:
-				log.Error("failed to restore account", sl.Err(err), slog.String("email", req.Email))
+				reqLog.Error("failed to restore account", sl.Err(err))
 				render.Status(r, http.StatusInternalServerError)
 				render.JSON(w, r, resp.Error("Internal error"))
 				return
 			}
 		}
 
-		log.Info("account restored", slog.String("email", req.Email))
+		reqLog.Info("account restored")
 
-		ResponseOK(w, r, accessToken, refreshToken)
+		responseOK(w, r, accessToken, refreshToken)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, response{
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,

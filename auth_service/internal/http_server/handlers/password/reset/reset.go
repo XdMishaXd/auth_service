@@ -19,15 +19,16 @@ import (
 	"github.com/google/uuid"
 )
 
-type Request struct {
-	Token   string `json:"token" validate:"required,reset_token_format" example:"abcDEF123..."`
+type request struct {
+	Token   string `json:"token" validate:"required,reset_token_format" example:"abcDEF123..."` //nolint:revive // custom validator
 	NewPass string `json:"password" validate:"required,min=8" example:"SecurePass123!"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 }
 
+// New godoc
 // @Summary      Сброс пароля
 // @Description  Сбрасывает пароль пользователя с использованием токена,
 // @Description  полученного по электронной почте.
@@ -55,24 +56,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.password.reset.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -84,7 +83,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -94,7 +93,7 @@ func New(
 		parts := strings.SplitN(req.Token, ".", 2)
 
 		if len(parts) != 2 {
-			log.Warn("invalid reset token format")
+			reqLog.Warn("invalid reset token format")
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("invalid token"))
@@ -102,7 +101,7 @@ func New(
 		}
 
 		if _, err := uuid.Parse(parts[0]); err != nil {
-			log.Warn("invalid token id", sl.Err(err))
+			reqLog.Warn("invalid token id", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("invalid token"))
@@ -119,20 +118,20 @@ func New(
 				errors.Is(err, storage.ErrResetTokenNotFound),
 				errors.Is(err, auth.ErrResetTokenExpired),
 				errors.Is(err, auth.ErrResetTokenUsed):
-				log.Warn("reset password rejected", sl.Err(err))
+				reqLog.Warn("reset password rejected", sl.Err(err))
 				render.Status(r, http.StatusBadRequest)
 				render.JSON(w, r, resp.Error("Invalid or expired token"))
 			case errors.Is(err, storage.ErrUserNotFound):
 				// не должно светиться отдельным сообщением наружу — тот же генерик-ответ
-				log.Error("reset token valid but user missing (data inconsistency)", sl.Err(err))
+				reqLog.Error("reset token valid but user missing (data inconsistency)", sl.Err(err))
 				render.Status(r, http.StatusBadRequest)
 				render.JSON(w, r, resp.Error("Invalid or expired token"))
 			case errors.Is(err, auth.ErrSamePassword):
-				log.Warn("new password same as current")
+				reqLog.Warn("new password same as current")
 				render.Status(r, http.StatusBadRequest)
 				render.JSON(w, r, resp.Error("New password must differ from your current password"))
 			default:
-				log.Error("failed to reset password", sl.Err(err))
+				reqLog.Error("failed to reset password", sl.Err(err))
 				render.Status(r, http.StatusInternalServerError)
 				render.JSON(w, r, resp.Error("internal error"))
 			}
@@ -140,12 +139,14 @@ func New(
 			return
 		}
 
-		ResponseOK(w, r)
+		log.Info("password has been successfully reset")
+
+		responseOK(w, r)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 	})
 }

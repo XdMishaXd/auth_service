@@ -19,13 +19,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	Email    string `json:"email" validate:"required,email" example:"example@domain.com"`
 	Username string `json:"username" validate:"required" example:"newUser2008"`
 	Pass     string `json:"password" validate:"required,min=8" example:"SecurePass123!"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	UserID int64 `json:"user_id" example:"234"`
 }
@@ -79,24 +79,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.register.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -108,7 +106,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -121,7 +119,7 @@ func New(
 		userID, err := authMiddleware.RegisterNewUser(ctx, req.Email, req.Username, req.Pass)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserAlreadyExists) {
-				log.Error("Failed to register user: user already exists")
+				reqLog.Error("Failed to register user: user already exists")
 
 				render.Status(r, http.StatusConflict)
 				render.JSON(w, r, resp.Error("User already exists"))
@@ -129,7 +127,7 @@ func New(
 				return
 			}
 
-			log.Error("failed to register user", sl.Err(err))
+			reqLog.Error("failed to register user", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -137,7 +135,7 @@ func New(
 			return
 		}
 
-		log.Info("User registered", slog.Int64("id", userID))
+		reqLog.Info("User registered", slog.Int64("id", userID))
 
 		err = verification.VerifyUserEmail(
 			ctx,
@@ -150,7 +148,7 @@ func New(
 			req.Email,
 		)
 		if err != nil {
-			log.Error("Failed to send verification email", sl.Err(err))
+			reqLog.Error("Failed to send verification email", sl.Err(err))
 
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("Internal error"))
@@ -159,12 +157,12 @@ func New(
 		}
 
 		render.Status(r, http.StatusCreated)
-		ResponseOK(w, r, userID)
+		responseOK(w, r, userID)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, userID int64) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, userID int64) {
+	render.JSON(w, r, response{
 		Response: resp.OK(),
 		UserID:   userID,
 	})

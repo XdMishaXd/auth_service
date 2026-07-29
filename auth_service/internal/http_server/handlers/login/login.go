@@ -17,13 +17,13 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type Request struct {
+type request struct {
 	Email string `json:"email" validate:"required,email" example:"example@domain.com"`
 	Pass  string `json:"password" validate:"required" example:"SecurePass123!"`
 	AppID int32  `json:"app_id" validate:"required,gt=0" example:"1"`
 }
 
-type Response struct {
+type response struct {
 	resp.Response
 	AccessToken      string `json:"access_token,omitempty" example:"abcDEF123..."`
 	RefreshToken     string `json:"refresh_token,omitempty" example:"fkajeDJ1p3FJ..."`
@@ -81,24 +81,22 @@ func New(
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.login.New"
 
-		log = log.With(
+		reqLog := log.With(
 			slog.String("op", op),
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req request
 
 		err := render.DecodeJSON(r.Body, &req)
 		if err != nil {
-			log.Error("Failed to decode request body", sl.Err(err))
+			reqLog.Error("Failed to decode request body", sl.Err(err))
 
 			render.Status(r, http.StatusBadRequest)
 			render.JSON(w, r, resp.Error("Failed to decode request"))
 
 			return
 		}
-
-		log.Info("Request body decoded")
 
 		if err = validate.Struct(req); err != nil {
 			var validateErr validator.ValidationErrors
@@ -110,7 +108,7 @@ func New(
 				return
 			}
 
-			log.Error("unexpected validation error type", sl.Err(err))
+			reqLog.Error("unexpected validation error type", sl.Err(err))
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, resp.Error("internal error"))
 
@@ -122,57 +120,59 @@ func New(
 
 		loginResult, err := authMiddleware.Login(ctx, req.Email, req.Pass, req.AppID, pendingSessionTTL)
 		if err != nil {
-			switch {
-			case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
-				render.Status(r, http.StatusUnauthorized)
-				render.JSON(w, r, resp.Error("Invalid credentials"))
-				return
-			case errors.Is(err, auth.ErrInvalidAppID):
-				render.Status(r, http.StatusBadRequest)
-				render.JSON(w, r, resp.Error("Invalid app id"))
-				return
-			case errors.Is(err, auth.ErrEmailNotVerified):
-				render.Status(r, http.StatusForbidden)
-				render.JSON(w, r, resp.Error("Email is not verified"))
-				return
-			case errors.Is(err, auth.ErrAccountDeleted):
-				render.Status(r, http.StatusGone)
-				render.JSON(w, r, resp.Error("Account deleted"))
-				return
-			}
+			status, msg := mapLoginError(reqLog, err)
 
-			log.Error("failed to login user", sl.Err(err))
-
-			render.Status(r, http.StatusInternalServerError)
-			render.JSON(w, r, resp.Error("Internal error"))
-
+			render.Status(r, status)
+			render.JSON(w, r, resp.Error(msg))
 			return
 		}
 
 		if loginResult.TwoFactorPending {
-			log.Info("password verified, 2fa challenge issued")
-			ResponseTwoFAPending(w, r, loginResult.SessionID)
+			reqLog.Info("password verified, 2fa challenge issued")
+			responseTwoFAPending(w, r, loginResult.SessionID)
 			return
 		}
 
-		log.Info("User logged in successfully")
-
-		ResponseOK(w, r, loginResult.AccessToken, loginResult.RefreshToken)
+		reqLog.Info("User logged in successfully")
+		responseOK(w, r, loginResult.AccessToken, loginResult.RefreshToken)
 	}
 }
 
-func ResponseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
-	render.JSON(w, r, Response{
+func responseOK(w http.ResponseWriter, r *http.Request, accessToken, refreshToken string) {
+	render.JSON(w, r, response{
 		Response:     resp.OK(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
 }
 
-func ResponseTwoFAPending(w http.ResponseWriter, r *http.Request, sessionID string) {
-	render.JSON(w, r, Response{
+func responseTwoFAPending(w http.ResponseWriter, r *http.Request, sessionID string) {
+	render.JSON(w, r, response{
 		Response:         resp.OK(),
 		TwoFactorPending: true,
 		SessionID:        sessionID,
 	})
+}
+
+// mapLoginError сопоставляет ошибку Login с HTTP-статусом и логирует
+// её на подходящем уровне: Warn для ожидаемых бизнес-отказов,
+// Error для непредвиденных сбоев.
+func mapLoginError(reqLog *slog.Logger, err error) (statusCode int, errForReturn string) {
+	switch {
+	case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
+		reqLog.Warn("login rejected: invalid credentials")
+		return http.StatusUnauthorized, "Invalid credentials"
+	case errors.Is(err, auth.ErrInvalidAppID):
+		reqLog.Warn("login rejected: invalid app id")
+		return http.StatusBadRequest, "Invalid app id"
+	case errors.Is(err, auth.ErrEmailNotVerified):
+		reqLog.Warn("login rejected: email not verified")
+		return http.StatusForbidden, "Email is not verified"
+	case errors.Is(err, auth.ErrAccountDeleted):
+		reqLog.Warn("login rejected: account deleted")
+		return http.StatusGone, "Account deleted"
+	default:
+		reqLog.Error("failed to login user", sl.Err(err))
+		return http.StatusInternalServerError, "Internal error"
+	}
 }
