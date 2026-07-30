@@ -59,4 +59,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build auth_service image
-        run: docker build -t auth_service:ci ./auth_service
+        run: docker build -f ./auth_service/docker/Dockerfile -t auth_service:ci ./auth_service
