@@ -19,19 +19,29 @@ jobs:
           cache: true
           cache-dependency-path: auth_service/go.sum
 
-      - name: Vet
+      - name: Vet auth service
         working-directory: ./auth_service
         run: go vet ./...
 
-      - name: Lint
+      - name: Lint auth service
         uses: golangci/golangci-lint-action@v8
         with:
           working-directory: ./auth_service
           version: v2.12.2
 
-      - name: Test
+      - name: Test auth service
         working-directory: ./auth_service
         run: go test -race -cover ./...
+
+      - name: Vet mail sender
+        working-directory: ./email_sender
+        run: go vet ./...
+
+      - name: Lint mail sender
+        uses: golangci/golangci-lint-action@v8
+        with:
+          working-directory: ./email_sender
+          version: v2.12.2
 
   compose-validate:
     runs-on: ubuntu-latest

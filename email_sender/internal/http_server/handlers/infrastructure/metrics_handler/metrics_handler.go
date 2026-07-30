@@ -1,4 +1,4 @@
-package metricsHandler
+package metricshandler
 
 import (
 	"net/http"

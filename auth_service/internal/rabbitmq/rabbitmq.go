@@ -40,7 +40,7 @@ func New(urlForConn, queueName string) (*RabbitMQClient, error) {
 		return nil, fmt.Errorf("%s: %w", op, errors.Join(err, closeErr))
 	}
 
-	if err := declareDeadLetterInfra(ch, queueName, dlxExchangeName, dlqName); err != nil {
+	if err = declareDeadLetterInfra(ch, queueName, dlxExchangeName, dlqName); err != nil {
 		closeErr := ch.Close()
 		closeErr2 := conn.Close()
 

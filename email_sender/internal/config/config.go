@@ -9,10 +9,12 @@ import (
 )
 
 type Config struct {
-	Env        string `yaml:"env" env:"APP_ENV" env-default:"local"`
-	RabbitMQ   `yaml:"rabbitmq"`
-	Email      `yaml:"email"`
-	HTTPServer `yaml:"http_server"`
+	Env            string `yaml:"env" env:"APP_ENV" env-default:"local"`
+	BaseURL        string `yaml:"base_url" env-required:"true" `
+	MailerPoolSize int    `yaml:"mailer_pool_size" env-required:"true" `
+	RabbitMQ       `yaml:"rabbitmq"`
+	Email          `yaml:"email"`
+	HTTPServer     `yaml:"http_server"`
 }
 
 type RabbitMQ struct {

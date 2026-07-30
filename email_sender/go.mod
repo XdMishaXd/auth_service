@@ -1,6 +1,6 @@
 module email_sender
 
-go 1.25.3
+go 1.25.12
 
 require (
 	github.com/go-chi/chi/v5 v5.3.1
@@ -8,7 +8,6 @@ require (
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rabbitmq/amqp091-go v1.10.0
-	golang.org/x/sync v0.13.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 )
 

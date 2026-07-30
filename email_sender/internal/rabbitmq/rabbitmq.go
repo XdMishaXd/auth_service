@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"email_sender/internal/metrics"
@@ -15,9 +16,10 @@ type RabbitMQClient struct {
 	conn    *amqp.Connection
 	channel *amqp.Channel
 	metrics *metrics.Metrics
+	log     *slog.Logger
 }
 
-func New(url string, m *metrics.Metrics) (*RabbitMQClient, error) {
+func New(url string, m *metrics.Metrics, log *slog.Logger) (*RabbitMQClient, error) {
 	const op = "rabbitmq.New"
 
 	conn, err := amqp.Dial(url)
@@ -27,21 +29,22 @@ func New(url string, m *metrics.Metrics) (*RabbitMQClient, error) {
 
 	ch, err := conn.Channel()
 	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("%s: %w", op, err)
+		closeErr := conn.Close()
+		return nil, fmt.Errorf("%s: %w", op, errors.Join(err, closeErr))
 	}
 
 	return &RabbitMQClient{
 		conn:    conn,
 		channel: ch,
 		metrics: m,
+		log:     log,
 	}, nil
 }
 
 // handler теперь возвращает error — это единственный способ узнать,
 // удалось ли обработать сообщение, и соответственно ack или nack его,
 // плюс записать это в metrics.
-func (r *RabbitMQClient) StartReading(ctx context.Context, queueName string, handler func([]byte) error) error {
+func (r *RabbitMQClient) StartReading(ctx context.Context, queueName string, handler func(context.Context, []byte) error) error {
 	const op = "rabbitmq.StartReading"
 
 	msgs, err := r.channel.Consume(
@@ -63,39 +66,55 @@ func (r *RabbitMQClient) StartReading(ctx context.Context, queueName string, han
 				return fmt.Errorf("%s: channel closed unexpectedly", op)
 			}
 
-			r.processMessage(msg, handler)
+			r.processMessage(ctx, msg, handler)
 		}
 	}
 }
 
-func (r *RabbitMQClient) processMessage(msg amqp.Delivery, handler func([]byte) error) {
+func (r *RabbitMQClient) processMessage(ctx context.Context, msg amqp.Delivery, handler func(context.Context, []byte) error) {
 	start := time.Now()
 
-	var procErr error
+	msgCtx, cancel := context.WithTimeout(ctx, 30*time.Second) // подобрать под реальный SLA
+	defer cancel()
 
+	var procErr error
 	func() {
 		defer func() {
 			if rec := recover(); rec != nil {
-				procErr = fmt.Errorf("handler panicked: %v", rec)
+				if err, ok := rec.(error); ok {
+					procErr = fmt.Errorf("handler panicked: %w", err)
+				} else {
+					procErr = fmt.Errorf("handler panicked: %v", rec)
+				}
 			}
 		}()
-		procErr = handler(msg.Body)
+		procErr = handler(msgCtx, msg.Body)
 	}()
 
-	duration := time.Since(start).Seconds()
-	r.metrics.MessageProcessingDuration.Observe(duration)
+	r.metrics.MessageProcessingDuration.Observe(time.Since(start).Seconds())
 
 	if procErr != nil {
 		r.metrics.MessagesFailedTotal.WithLabelValues(reasonLabel()).Inc()
-		// requeue=false: не гоняем письмо по кругу бесконечно при постоянной
-		// ошибке (невалидный email и т.п.) — это отдельный разговор про DLQ,
-		// пока хотя бы не теряем сообщение молча и не крутим retry storm
-		_ = msg.Nack(false, false)
+		r.log.Error("message processing failed",
+			"error", procErr,
+			"delivery_tag", msg.DeliveryTag,
+			"redelivered", msg.Redelivered,
+		)
+
+		// requeue=false: DLQ настроен на стороне продюсера (x-dead-letter-exchange),
+		// поэтому nack без requeue уводит сообщение в DLQ, а не теряет его.
+		if err := msg.Nack(false, false); err != nil {
+			r.log.Error("nack failed",
+				"error", err, "delivery_tag", msg.DeliveryTag)
+		}
 		return
 	}
 
 	r.metrics.MessagesConsumedTotal.Inc()
-	_ = msg.Ack(false)
+	if err := msg.Ack(false); err != nil {
+		r.log.Error("ack failed",
+			"error", err, "delivery_tag", msg.DeliveryTag)
+	}
 }
 
 func reasonLabel() string {
