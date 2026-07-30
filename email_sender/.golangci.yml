@@ -1,0 +1,109 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - errorlint
+    - wrapcheck
+    - contextcheck
+    - noctx
+    - containedctx
+    - revive
+    - gocritic
+    - gosec
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - .Wrap(
+        - .Wrapf(
+
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: line-length-limit
+          disabled: true
+        - name: add-constant
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: import-alias-naming
+          disabled: true
+        - name: exported
+          disabled: true
+        - name: error-return
+          severity: error
+        - name: error-naming
+          severity: error
+        - name: context-as-argument
+          severity: error
+        - name: context-keys-type
+          severity: error
+        - name: unused-parameter
+          severity: warning
+        - name: cyclomatic
+          arguments: [15]
+        - name: max-public-structs
+          arguments: [10]
+        - name: function-length
+          arguments: [50, 120]
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+
+    gosec:
+      excludes:
+        - G104
+
+  exclusions:
+    paths:
+      - docs
+
+    rules:
+      - path: _test\.go
+        linters:
+          - wrapcheck
+          - gosec
+          - errcheck
+
+      - path: _test\.go
+        linters:
+          - revive
+        text: "unused-parameter"
+
+      - linters:
+          - staticcheck
+        text: "QF1008"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

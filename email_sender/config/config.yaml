@@ -3,6 +3,10 @@ env: "prod"
 rabbitmq:
   queue_name: "notificationsQueue"
 
+base_url: "https://localhost"
+
+mailer_pool_size: 5
+
 email:
   host: "smtp.gmail.com"
   port: 587
