@@ -72,7 +72,7 @@ func New(
 			return
 		}
 
-		reqLog.Info("2fa enabled", slog.Int64("user_id", claims.UserID))
+		reqLog.Info("2fa enabled")
 
 		responseOK(w, r)
 	}
