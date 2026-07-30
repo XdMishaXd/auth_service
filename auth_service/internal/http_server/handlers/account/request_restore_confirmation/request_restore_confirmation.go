@@ -88,7 +88,7 @@ func New(
 			// Клиенту всегда один и тот же ответ (anti-enumeration).
 			switch {
 			case errors.Is(err, storage.ErrUserNotFound), errors.Is(err, storage.ErrNothingToRestore):
-				reqLog.Info("restore confirmation request completed: no matching account")
+				reqLog.Warn("restore confirmation request completed: no matching account")
 			default:
 				reqLog.Error("failed to send restore confirmation", sl.Err(err))
 			}

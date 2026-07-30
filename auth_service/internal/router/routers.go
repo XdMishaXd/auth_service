@@ -8,8 +8,8 @@ import (
 	"auth_service/internal/config"
 	"auth_service/internal/http_server/handlers/infrastructure/health"
 	metricsHandler "auth_service/internal/http_server/handlers/infrastructure/metrics_handler"
+	httplog "auth_service/internal/http_server/middleware/http_log"
 	httpRateLimit "auth_service/internal/http_server/middleware/http_rate_limit"
-	logformatter "auth_service/internal/http_server/middleware/log_formatter"
 	metricsCollector "auth_service/internal/http_server/middleware/metrics_collector"
 	jwtGen "auth_service/internal/lib/jwt_gen"
 	metricsService "auth_service/internal/metrics"
@@ -49,7 +49,7 @@ func New(d Deps) *Router {
 // Setup строит и возвращает *chi.Mux со всеми зарегистрированными
 // маршрутами: health/metrics без middleware, остальные — под общим
 // стеком middleware (request ID, real IP, логирование, recover).
-func (rt *Router) Setup() *chi.Mux {
+func (rt *Router) Setup(log *slog.Logger) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Get("/health", health.New())
@@ -59,7 +59,7 @@ func (rt *Router) Setup() *chi.Mux {
 		r.Use(metricsCollector.New(rt.d.Metrics))
 		r.Use(middleware.RequestID)
 		r.Use(middleware.ClientIPFromHeader("X-Real-IP"))
-		r.Use(logformatter.NewRedactingLogger())
+		r.Use(httplog.New(log, rt.d.Metrics))
 		r.Use(middleware.Recoverer)
 
 		rt.registerSwagger(r)

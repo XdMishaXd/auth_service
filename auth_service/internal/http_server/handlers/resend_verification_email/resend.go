@@ -121,7 +121,7 @@ func New(
 		userID, isVerified, err := authMiddleware.CheckUserVerification(ctx, req.Email)
 		if err != nil {
 			if errors.Is(err, storage.ErrUserNotFound) {
-				reqLog.Info("User not found")
+				reqLog.Warn("User not found")
 
 				render.Status(r, http.StatusNotFound)
 				render.JSON(w, r, resp.Error("User not found"))

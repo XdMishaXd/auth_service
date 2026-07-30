@@ -31,6 +31,6 @@ func main() {
 	}
 	defer cleanup(log)
 
-	srv := newHTTPServer(cfg, app.Router.Setup())
+	srv := newHTTPServer(cfg, app.Router.Setup(log))
 	run(srv, cleanup, log)
 }

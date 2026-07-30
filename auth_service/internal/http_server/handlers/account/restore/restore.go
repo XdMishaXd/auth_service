@@ -113,7 +113,7 @@ func New(
 			case errors.Is(err, auth.ErrRestoreConfirmation),
 				errors.Is(err, storage.ErrUserNotFound),
 				errors.Is(err, storage.ErrNothingToRestore):
-				reqLog.Info("restore rejected", sl.Err(err))
+				reqLog.Warn("restore rejected", sl.Err(err))
 				render.Status(r, http.StatusUnauthorized)
 				render.JSON(w, r, resp.Error("invalid confirmation"))
 				return
