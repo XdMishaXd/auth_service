@@ -192,7 +192,7 @@ func (r *Repo) DeleteAllResetTokens(ctx context.Context, uid int64) error {
 	query := `
 		DELETE
 		FROM password_reset_tokens
-		WHERE user_id = $
+		WHERE user_id = $1
 	`
 	_, err := r.pool.Exec(ctx, query, uid)
 	if err != nil {
