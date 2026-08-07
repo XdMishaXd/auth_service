@@ -34,7 +34,7 @@ func setupTestRepo(t *testing.T) *Repo {
 		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
-		t.Fatalf("запуск postgres-контейнера: %v", err)
+		t.Fatalf("setup postgres-container: %v", err)
 	}
 	t.Cleanup(func() {
 		_ = container.Terminate(context.Background())
